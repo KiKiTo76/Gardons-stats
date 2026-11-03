@@ -464,7 +464,7 @@ var GOALIE_SHOTS = [{ k: "critical", label: "Arrêt critique", hint: "aurait pu 
 var SAVE_W = { critical: 2, normal: 1 };
 var SITUATIONS = [{ k: "normal", label: "Jeu normal" }, { k: "sup", label: "Supériorité" }, { k: "inf", label: "Infériorité" }];
 var PENALTIES = [{ k: "mineure", label: "Mineure", min: 2 }, { k: "double", label: "Double mineure", min: 4 }, { k: "majeure", label: "Majeure", min: 5 }, { k: "meconduite", label: "Méconduite", min: 10 }, { k: "match", label: "Match", min: 20 }];
-var EVENT_LABEL = { goal: "But", assist: "Passe", penalty: "Pénalité", offside: "Hors-jeu", icing: "Dégagement interdit", save: "Arrêt", ga: "But encaissé", shot: "Tir", shotag: "Tir reçu" };
+var EVENT_LABEL = { goal: "But", assist: "Passe", penalty: "Pénalité", offside: "Hors-jeu", icing: "Dégagement interdit", fow: "Mise au jeu gagnée", fol: "Mise au jeu perdue", save: "Arrêt", ga: "But encaissé", shot: "Tir", shotag: "Tir reçu" };
 
 function evs(m) { return Array.isArray(m.events) ? m.events : []; }
 
@@ -493,7 +493,7 @@ function record(matches) {
 }
 
 function playerMatchStats(m, pid, per) {
-  var s = { g: 0, a: 0, pim: 0, hj: 0, di: 0, sv: 0, ga: 0, pen: 0, shc: 0, shn: 0, shm: 0, svc: 0, svn: 0, adm: 0 };
+  var s = { g: 0, a: 0, pim: 0, hj: 0, di: 0, fw: 0, fl: 0, sv: 0, ga: 0, pen: 0, shc: 0, shn: 0, shm: 0, svc: 0, svn: 0, adm: 0 };
   evs(m).forEach(function (e) {
     if (per && String(e.per) !== String(per)) return;
     if (e.type === "goal" && Array.isArray(e.ast) && e.ast.indexOf(pid) >= 0) s.a++;
@@ -503,6 +503,8 @@ function playerMatchStats(m, pid, per) {
     else if (e.type === "penalty") { s.pim += e.min || 0; s.pen++; }
     else if (e.type === "offside") s.hj++;
     else if (e.type === "icing") s.di++;
+    else if (e.type === "fow") s.fw++;
+    else if (e.type === "fol") s.fl++;
     else if (e.type === "save") { s.sv++; s.svn++; }
     else if (e.type === "ga") s.ga++;
     else if (e.type === "shot") { if (e.kind === "critical") s.shc++; else if (e.kind === "normal") s.shn++; else if (e.kind === "missed") s.shm++; }
@@ -522,8 +524,8 @@ function playerTotals(matches) {
     evs(m).forEach(function (e) { if (e.pid) ids[e.pid] = true; });
     Object.keys(ids).forEach(function (pid) {
       var s = playerMatchStats(m, pid);
-      var t = out[pid] || (out[pid] = { id: pid, gp: 0, g: 0, a: 0, pim: 0, hj: 0, di: 0, sh: 0, sv: 0, w: 0, shc: 0, shn: 0, shm: 0, svc: 0, svn: 0, svw: 0, adm: 0, pm: 0 });
-      t.pm += pmv[pid] || 0; t.gp++; t.g += s.g; t.a += s.a; t.pim += s.pim; t.hj += s.hj; t.di += s.di; t.sh += s.sh; t.sv += s.sv; t.shc += s.shc; t.shn += s.shn; t.shm += s.shm; t.svc += s.svc; t.svn += s.svn; t.svw += s.svw; t.adm += s.adm;
+      var t = out[pid] || (out[pid] = { id: pid, gp: 0, g: 0, a: 0, pim: 0, hj: 0, di: 0, fw: 0, fl: 0, sh: 0, sv: 0, w: 0, shc: 0, shn: 0, shm: 0, svc: 0, svn: 0, svw: 0, adm: 0, pm: 0 });
+      t.pm += pmv[pid] || 0; t.gp++; t.g += s.g; t.a += s.a; t.pim += s.pim; t.hj += s.hj; t.di += s.di; t.fw += s.fw; t.fl += s.fl; t.sh += s.sh; t.sv += s.sv; t.shc += s.shc; t.shn += s.shn; t.shm += s.shm; t.svc += s.svc; t.svn += s.svn; t.svw += s.svw; t.adm += s.adm;
       if (state.players[pid] && state.players[pid].pos === "G" && outcome(m) === "w") t.w++;
     });
   });
@@ -746,8 +748,8 @@ function viewStats() {
       : emptyState("Pas encore de statistiques", "Les chiffres apparaissent dès qu'un match est terminé.");
   } else if (ui.statsView === "players") {
     var rows = sortTable(skaters.filter(function (t) { return ui.tf.pos === "all" || ui.tf.pos === "G" ? ui.tf.pos === "all" : state.players[t.id] && state.players[t.id].pos === ui.tf.pos; }), ui.sort.players);
-    table = rows.length ? '<div class="card flat tablewrap"><table><thead><tr>' + th("players", "name", "Joueur") + th("players", "gp", "MJ") + th("players", "g", "B") + th("players", "a", "A") + th("players", "pts", "Pts") + th("players", "pm", "+/-") + th("players", "shc", "TC") + th("players", "shn", "TN") + th("players", "shm", "TR") + th("players", "danger", "Danger") + th("players", "pim", "Pun.") + th("players", "hj", "HJ") + th("players", "di", "DI") + "</tr></thead><tbody>" +
-      rows.map(function (r) { return '<tr><td class="name"><a href="#stats">' + esc(r.name) + '</a></td><td>' + r.gp + "</td><td>" + r.g + "</td><td>" + r.a + '</td><td class="pts">' + r.pts + "</td><td>" + (r.pm > 0 ? "+" : "") + r.pm + "</td><td>" + r.shc + "</td><td>" + r.shn + "</td><td>" + r.shm + "</td><td>" + fmt1(r.danger) + "</td><td>" + r.pim + "</td><td>" + r.hj + "</td><td>" + r.di + "</td></tr>"; }).join("") + "</tbody></table></div>"
+    table = rows.length ? '<div class="card flat tablewrap"><table><thead><tr>' + th("players", "name", "Joueur") + th("players", "gp", "MJ") + th("players", "g", "B") + th("players", "a", "A") + th("players", "pts", "Pts") + th("players", "pm", "+/-") + th("players", "shc", "TC") + th("players", "shn", "TN") + th("players", "shm", "TR") + th("players", "danger", "Danger") + th("players", "pim", "Pun.") + th("players", "hj", "HJ") + th("players", "di", "DI") + th("players", "fw", "MG") + th("players", "fl", "MP") + "</tr></thead><tbody>" +
+      rows.map(function (r) { return '<tr><td class="name"><a href="#stats">' + esc(r.name) + '</a></td><td>' + r.gp + "</td><td>" + r.g + "</td><td>" + r.a + '</td><td class="pts">' + r.pts + "</td><td>" + (r.pm > 0 ? "+" : "") + r.pm + "</td><td>" + r.shc + "</td><td>" + r.shn + "</td><td>" + r.shm + "</td><td>" + fmt1(r.danger) + "</td><td>" + r.pim + "</td><td>" + r.hj + "</td><td>" + r.di + "</td><td>" + r.fw + "</td><td>" + r.fl + "</td></tr>"; }).join("") + "</tbody></table></div>"
       : emptyState("Pas encore de statistiques", "Les chiffres apparaissent dès qu'un match est terminé.");
   } else {
     var gr = sortTable(goalies, ui.sort.goalies);
@@ -934,8 +936,8 @@ function resultTable(m) {
   var out = "<h2>Résumé</h2>" + filterBar(true);
   if (!sk.length && !gk.length) out += emptyState("Aucun joueur", "Aucun joueur ne correspond au filtre.");
   if (sk.length) {
-    out += '<div class="card flat tablewrap"><table><thead><tr>' + th("mres", "num", "Joueur") + th("mres", "g", "B") + th("mres", "a", "A") + th("mres", "pim", "Pun.") + th("mres", "hj", "HJ") + th("mres", "di", "DI") + th("mres", "shc", "TC") + th("mres", "shn", "TN") + th("mres", "shm", "TR") + th("mres", "pm", "+/-") + '</tr></thead><tbody>' +
-      sk.map(function (r) { return '<tr><td class="name">' + esc(r.name) + "</td><td>" + r.g + "</td><td>" + r.a + "</td><td>" + r.pim + "</td><td>" + r.hj + "</td><td>" + r.di + "</td><td>" + r.shc + "</td><td>" + r.shn + "</td><td>" + r.shm + "</td><td>" + pmCell(r) + "</td></tr>"; }).join("") + "</tbody></table></div>";
+    out += '<div class="card flat tablewrap"><table><thead><tr>' + th("mres", "num", "Joueur") + th("mres", "g", "B") + th("mres", "a", "A") + th("mres", "pim", "Pun.") + th("mres", "hj", "HJ") + th("mres", "di", "DI") + th("mres", "fw", "MG") + th("mres", "fl", "MP") + th("mres", "shc", "TC") + th("mres", "shn", "TN") + th("mres", "shm", "TR") + th("mres", "pm", "+/-") + '</tr></thead><tbody>' +
+      sk.map(function (r) { return '<tr><td class="name">' + esc(r.name) + "</td><td>" + r.g + "</td><td>" + r.a + "</td><td>" + r.pim + "</td><td>" + r.hj + "</td><td>" + r.di + "</td><td>" + r.fw + "</td><td>" + r.fl + "</td><td>" + r.shc + "</td><td>" + r.shn + "</td><td>" + r.shm + "</td><td>" + pmCell(r) + "</td></tr>"; }).join("") + "</tbody></table></div>";
   }
   if (gk.length) {
     out += '<div class="card flat list" style="margin-top:12px">' + gk.map(function (r) {
@@ -990,6 +992,7 @@ function badgeList(m, p) {
   if (s.pim) b.push('<span class="badge bad">Pun. ' + s.pim + "</span>");
   if (s.hj) b.push('<span class="badge">HJ ' + s.hj + "</span>");
   if (s.di) b.push('<span class="badge">DI ' + s.di + "</span>");
+  if (s.fw || s.fl) b.push('<span class="badge">MJ ' + s.fw + "-" + s.fl + "</span>");
   return b;
 }
 
@@ -1050,6 +1053,7 @@ function plButton(m, mid, p) {
   if (s.pim) b.push('<span class="badge bad">Pun. ' + s.pim + "</span>");
   if (s.hj) b.push('<span class="badge">HJ ' + s.hj + "</span>");
   if (s.di) b.push('<span class="badge">DI ' + s.di + "</span>");
+  if (s.fw || s.fl) b.push('<span class="badge">MJ ' + s.fw + "-" + s.fl + "</span>");
   return '<button class="plbtn" data-act="pl" data-m="' + mid + '" data-p="' + p.id + '"><span class="jersey">' + esc(p.num) + '</span><span class="grow" style="text-align:left"><span class="title" style="display:block">' + esc(p.name) + '</span><span class="small muted">' + (p.pos === "G" ? "Gardien " + (m.gk && m.gk[p.id] === "B" ? "backup" : "titulaire") : POS[p.pos]) + '</span></span>' + (b.length ? '<span class="badges">' + b.join("") + "</span>" : "") + "</button>";
 }
 
@@ -1135,7 +1139,7 @@ function sheetHtml() {
   } else if (p.pos === "G") {
     body = '<div class="actions"><button class="abtn" data-act="shot-open">Arrêt / tir reçu</button>' + '<button class="abtn bad" data-act="ga" data-m="' + sh.mid + '" data-p="' + sh.pid + '">But encaissé</button>' + '<button class="abtn good" data-act="goal-open">But</button><button class="abtn" data-act="pen-open">Pénalité</button></div>';
   } else {
-    body = '<div class="actions">' + '<button class="abtn good" data-act="goal-open">But</button>' + '<button class="abtn" data-act="shot-open">Tir</button>' + '<button class="abtn bad" data-act="pen-open">Pénalité</button>' + evBtn("offside", "Hors-jeu") + evBtn("icing", "Dégagement interdit") + "</div>";
+    body = '<div class="actions">' + '<button class="abtn good" data-act="goal-open">But</button>' + '<button class="abtn" data-act="shot-open">Tir</button>' + '<button class="abtn bad" data-act="pen-open">Pénalité</button>' + evBtn("offside", "Hors-jeu") + evBtn("icing", "Dégagement interdit") + evBtn("fow", "Mise au jeu gagnée", "good") + evBtn("fol", "Mise au jeu perdue", "bad") + "</div>";
   }
   return '<div class="sheet-back" data-act="sheet-close"></div><div class="sheet' + (sh.step === "goal" || sh.step === "ga" ? " wide" : "") + '" role="dialog" aria-modal="true" aria-label="' + (p ? "Actions pour " + esc(p.name) : "But encaissé") + '">' + head + body + "</div>";
 }
@@ -1290,7 +1294,7 @@ var PERIODS = ["1", "2", "3"];
 ui.liveTier = "all";
 
 function emptyTier() {
-  return { gs: 0, gf: 0, ga: 0, shc: 0, shn: 0, shm: 0, pim: 0, pen: 0, hj: 0, di: 0, ac: 0, an: 0, am: 0, svc: 0, svn: 0, sit: { normal: { f: 0, a: 0 }, sup: { f: 0, a: 0 }, inf: { f: 0, a: 0 } } };
+  return { gs: 0, gf: 0, ga: 0, shc: 0, shn: 0, shm: 0, pim: 0, pen: 0, hj: 0, di: 0, fw: 0, fl: 0, ac: 0, an: 0, am: 0, svc: 0, svn: 0, sit: { normal: { f: 0, a: 0 }, sup: { f: 0, a: 0 }, inf: { f: 0, a: 0 } } };
 }
 
 function dangerOf(c, n, mi) { return c * SHOT_W.critical + n * SHOT_W.normal + mi * SHOT_W.missed; }
@@ -1317,6 +1321,8 @@ function liveStats(m) {
     else if (e.type === "penalty") each(function (t) { t.pim += e.min || 0; t.pen++; });
     else if (e.type === "offside") each(function (t) { t.hj++; });
     else if (e.type === "icing") each(function (t) { t.di++; });
+    else if (e.type === "fow") each(function (t) { t.fw++; });
+    else if (e.type === "fol") each(function (t) { t.fl++; });
   });
   return { T: T };
 }
@@ -1327,7 +1333,7 @@ function sumLive(list) {
   list.forEach(function (S) {
     Object.keys(R.T).forEach(function (k) {
       var a = R.T[k], b = S.T[k];
-      ["gs", "gf", "ga", "shc", "shn", "shm", "pim", "pen", "hj", "di", "ac", "an", "am", "svc", "svn"].forEach(function (f) { a[f] += b[f]; });
+      ["gs", "gf", "ga", "shc", "shn", "shm", "pim", "pen", "hj", "di", "fw", "fl", "ac", "an", "am", "svc", "svn"].forEach(function (f) { a[f] += b[f]; });
       ["normal", "sup", "inf"].forEach(function (x) { a.sit[x].f += b.sit[x].f; a.sit[x].a += b.sit[x].a; });
     });
   });
@@ -1341,11 +1347,11 @@ function tierMetrics(t) {
     gf: t.gf, ga: t.ga, diff: t.gf - t.ga,
     agT: agT, ac: t.ac, an: t.an, am: t.am, agD: dangerOf(t.ac, t.an, t.am),
     svc: t.svc, svn: t.svn, svw: t.svc * SAVE_W.critical + t.svn * SAVE_W.normal, svp: sv + t.ga ? sv / (sv + t.ga) * 100 : null,
-    pen: t.pen, pim: t.pim, hj: t.hj, di: t.di
+    pen: t.pen, pim: t.pim, hj: t.hj, di: t.di, fw: t.fw, fl: t.fl, fp: t.fw + t.fl ? t.fw / (t.fw + t.fl) * 100 : null
   };
 }
 
-function tierHasData(t) { return t.shc + t.shn + t.shm + t.ac + t.an + t.am + t.gf + t.ga + t.pen + t.hj + t.di > 0; }
+function tierHasData(t) { return t.shc + t.shn + t.shm + t.ac + t.an + t.am + t.gf + t.ga + t.pen + t.hj + t.di + t.fw + t.fl > 0; }
 
 function fmtVal(v, kind) {
   if (v == null) return "-";
@@ -1382,7 +1388,8 @@ var TIER_GROUPS = [
   { title: "Attaque adverse", specs: [{ l: "Tirs adverses", k: "agT", dir: -1 }, { l: "Critiques", k: "ac", dir: -1 }, { l: "Normaux", k: "an", dir: -1 }, { l: "Ratés", k: "am" }, { l: "Danger", k: "agD", dir: -1, kind: "dec" }] },
   { title: "Score", specs: [{ l: "Buts pour", k: "gf", dir: 1 }, { l: "Buts contre", k: "ga", dir: -1 }, { l: "+/-", k: "diff", dir: 1, kind: "diff" }] },
   { title: "Gardien", specs: [{ l: "Arrêts crit.", k: "svc" }, { l: "Arrêts norm.", k: "svn" }, { l: "Arrêts pond.", k: "svw", kind: "dec" }, { l: "Buts encaissés", k: "ga", dir: -1 }, { l: "% arrêts", k: "svp", dir: 1, kind: "pct" }] },
-  { title: "Discipline", specs: [{ l: "Pénalités", k: "pen", dir: -1 }, { l: "Minutes", k: "pim", dir: -1 }, { l: "Hors-jeu", k: "hj", dir: -1 }, { l: "Dég. interdits", k: "di", dir: -1 }] }
+  { title: "Discipline", specs: [{ l: "Pénalités", k: "pen", dir: -1 }, { l: "Minutes", k: "pim", dir: -1 }, { l: "Hors-jeu", k: "hj", dir: -1 }, { l: "Dég. interdits", k: "di", dir: -1 }] },
+  { title: "Mises au jeu", specs: [{ l: "Gagnées", k: "fw", dir: 1 }, { l: "Perdues", k: "fl", dir: -1 }, { l: "% gagnées", k: "fp", dir: 1, kind: "pct" }] }
 ];
 
 function dangerDuel(cur, m) {
@@ -1529,7 +1536,7 @@ function matchRows(m, per) {
     var pm = pmv[pid] || 0;
     var score = isG ? s.svw - GK_AWARD_W.ga * s.ga : pm;
     return Object.assign({}, s, { line: (m.lines && m.lines[pid]) || "", danger: dangerOf(s.shc, s.shn, s.shm), id: pid, name: playerName(pid), num: state.players[pid].num, pos: state.players[pid].pos, isG: isG, pts: s.g + s.a, pm: pm, score: score, order: lineOrder(m, pid),
-      active: !!(s.g || s.a || s.pim || s.hj || s.di || s.shc || s.shn || s.shm || s.sv || s.ga || s.adm || pmv[pid]) });
+      active: !!(s.g || s.a || s.pim || s.hj || s.di || s.fw || s.fl || s.shc || s.shn || s.shm || s.sv || s.ga || s.adm || pmv[pid]) });
   });
   return rows;
 }

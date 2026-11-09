@@ -133,14 +133,8 @@ tbody tr + tr td { border-top: 1px solid var(--line); }
 td.name { font-weight: 600; text-align: left; }
 td.pts { font-weight: 800; }
 
-.stepper { display: inline-flex; align-items: center; gap: 4px; }
-.stepper button { width: 44px; height: 44px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); font-size: 1.4rem; font-weight: 700; line-height: 1; }
-.stepper button.plus { background: var(--navy); border-color: var(--navy); color: var(--on-navy); }
-.stepper output { min-width: 28px; text-align: center; font-family: var(--display); font-weight: 800; font-size: 1.4rem; }
 .pl { display: grid; grid-template-columns: 1fr; gap: 10px; padding: 14px 16px; }
 .pl .head { display: flex; align-items: center; gap: 12px; }
-.pl .steppers { display: flex; flex-wrap: wrap; gap: 14px 20px; }
-.pl .steppers > div { display: flex; flex-direction: column; gap: 4px; }
 
 .jersey { width: 34px; height: 34px; border-radius: 50%; background: var(--navy); color: var(--on-navy); display: inline-flex; align-items: center; justify-content: center; font-family: var(--display); font-weight: 700; flex: none; }
 .jersey.off { background: var(--neutral); }
@@ -165,8 +159,6 @@ td.pts { font-weight: 800; }
     display: flex; flex-direction: column; gap: 6px; position: fixed; left: 0; top: 0; bottom: 0; width: var(--side-w);
     background: var(--navy); color: var(--on-navy); padding: 24px 14px;
   }
-  .side .brand { font-family: var(--display); font-weight: 800; font-size: 1.6rem; padding: 0 10px 18px; letter-spacing: 0.02em; }
-  .side .brand small { display: block; font-family: var(--body); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.6; }
   .side .tab { flex-direction: row; gap: 12px; font-size: 1rem; padding: 12px 14px; justify-content: flex-start; flex: none; }
   .main { padding-block: 32px 60px; }
   .fab { right: 32px; bottom: 32px; }
@@ -177,8 +169,8 @@ td.pts { font-weight: 800; }
   .board .big { font-size: 2.4rem; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .btn, .chip, .tab, .stepper button { transition: background-color 0.15s, transform 0.1s; }
-  .btn:active, .stepper button:active { transform: scale(0.97); }
+  .btn, .chip, .tab { transition: background-color 0.15s, transform 0.1s; }
+  .btn:active { transform: scale(0.97); }
 }
 
 .chip.sm { min-height: 34px; padding: 4px 12px; font-size: 0.85rem; }
@@ -265,7 +257,6 @@ h3 { font-style: italic; }
 .sheet.wide .chips { gap: 6px; }
 .sheet.wide .chip { min-height: 36px; padding: 4px 12px; font-size: 0.9rem; }
 .sheet.wide .field { gap: 4px; }
-.sheet.wide .head-sit { display: flex; align-items: flex-end; gap: 12px; }
 .stat small { display: block; margin-top: 2px; font-size: 0.68rem; font-weight: 700; }
 .stat.better { background: color-mix(in srgb, var(--good) 16%, var(--surface)); }
 .stat.better b, .stat.better small { color: var(--good); }
@@ -1433,7 +1424,6 @@ function emptyTier() {
 
 function dangerOf(c, n, mi) { return c * SHOT_W.critical + n * SHOT_W.normal + mi * SHOT_W.missed; }
 function fmt1(x) { return String(Math.round(x * 10) / 10).replace(".", ","); }
-function pctOf(a, b) { return b ? Math.round(a / b * 100) + " %" : "-"; }
 
 function liveStats(m) {
   var T = { all: emptyTier() };
@@ -2568,14 +2558,12 @@ function boot() {
       var r = e.target.closest && e.target.closest(".role");
       if (!r) return;
       if (fb.auth.currentUser) {
-        if (!ADMIN_UID) window.prompt("Votre UID (à copier dans ADMIN_UID et firestore.rules)", fb.auth.currentUser.uid);
-        else if (window.confirm("Se déconnecter ?")) fb.au.signOut(fb.auth);
+        if (window.confirm("Se déconnecter ?")) fb.au.signOut(fb.auth);
       } else login(fb);
     });
     fb.au.onAuthStateChanged(fb.auth, function (u) {
-      state.admin = !!(u && ADMIN_UID && u.uid === ADMIN_UID);
+      state.admin = !!(u && u.uid === ADMIN_UID);
       scheduleRender();
-      if (u && !ADMIN_UID) toast("Connecté. Touchez le badge Invité pour afficher votre UID.");
     });
     var seen = {};
     COLLS.forEach(function (c) {

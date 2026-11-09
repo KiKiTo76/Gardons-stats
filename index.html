@@ -290,6 +290,13 @@ th[aria-sort="ascending"] button::after { border-bottom: 5px solid currentColor;
 button.stat { font: inherit; color: inherit; background: var(--surface); border: 0; border-right: 1px solid var(--line); cursor: pointer; }
 .stat.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
 .fodetail .item b { font-family: var(--display); font-size: 1.3rem; }
+.breakbar { position: fixed; left: max(12px, env(safe-area-inset-left, 0px)); bottom: calc(var(--nav-h) + 12px + env(safe-area-inset-bottom, 0px)); z-index: 30; background: var(--surface-2); border: 2px solid var(--accent); border-radius: 8px; box-shadow: 0 8px 20px rgba(0,0,0,0.35); overflow: hidden; min-width: 230px; }
+.breakbar .brow { display: flex; align-items: center; gap: 10px; padding: 4px 4px 4px 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.breakbar .bprog { display: block; height: 4px; background: var(--line); }
+.breakbar .bprog i { display: block; height: 100%; width: 0; background: var(--accent); }
+.breakbar.late { border-color: var(--bad); }
+.breakbar.late .bprog i { background: var(--bad); }
+@media (min-width: 900px) { .breakbar { left: calc(var(--side-w) + 16px); bottom: 16px; } }
 </style>
 </head>
 <body>
@@ -300,6 +307,7 @@ button.stat { font: inherit; color: inherit; background: var(--surface); border:
 </div>
 <div id="syncbar" class="syncbar" hidden role="status"></div>
 <div id="toast" class="toast" hidden role="status"></div>
+<div id="breakbar" class="breakbar" hidden role="timer"><div class="brow"><span id="breaktxt"></span><button type="button" class="btn ghost" data-act="break-cancel">Annuler</button></div><span class="bprog"><i id="breakprog"></i></span></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="export-match.js"></script>
 <script>
@@ -330,6 +338,62 @@ function esc(s) {
     return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
   });
 }
+
+var BREAK_KEY = "gardons-break";
+var BREAK_MAX = 900000;
+var breakState = null;
+var breakInt = null;
+
+function fmtClock(ms) {
+  var t = Math.floor(ms / 1000);
+  return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0");
+}
+
+function stopBreak() {
+  breakState = null;
+  clearInterval(breakInt);
+  try { localStorage.removeItem(BREAK_KEY); } catch (e) {}
+  var bar = document.getElementById("breakbar");
+  if (bar) bar.hidden = true;
+}
+
+function tickBreak() {
+  if (!breakState) return;
+  var el = Date.now() - breakState.start;
+  if (el < 0) el = 0;
+  if (el >= BREAK_MAX) { stopBreak(); toast("Pause de 15 min terminée"); return; }
+  var bar = document.getElementById("breakbar");
+  document.getElementById("breaktxt").textContent = "Pause T" + breakState.tier + " - T" + (breakState.tier + 1) + " : " + fmtClock(el) + " / 15:00";
+  document.getElementById("breakprog").style.width = (el / BREAK_MAX * 100) + "%";
+  bar.className = "breakbar" + (el >= BREAK_MAX - 120000 ? " late" : "");
+  bar.hidden = false;
+}
+
+function runBreak() {
+  clearInterval(breakInt);
+  tickBreak();
+  if (breakState) breakInt = setInterval(tickBreak, 1000);
+}
+
+function startBreak(tier) {
+  breakState = { start: Date.now(), tier: tier };
+  try { localStorage.setItem(BREAK_KEY, JSON.stringify(breakState)); } catch (e) {}
+  runBreak();
+}
+
+function resumeBreak() {
+  try {
+    var b = JSON.parse(localStorage.getItem(BREAK_KEY));
+    if (b && b.start && b.tier && Date.now() - b.start < BREAK_MAX) { breakState = b; runBreak(); }
+    else localStorage.removeItem(BREAK_KEY);
+  } catch (e) {}
+}
+
+document.addEventListener("visibilitychange", function () { if (!document.hidden) tickBreak(); });
+
+document.getElementById("breakbar").addEventListener("click", function (e) {
+  if (e.target.closest("[data-act=\"break-cancel\"]")) stopBreak();
+});
 
 function toast(msg) {
   var t = document.getElementById("toast");
@@ -2022,6 +2086,7 @@ var actions = {
     m.period = cur + 1;
     write("matches", d.m, { period: m.period }, "update"); render();
     toast("Fin T" + cur + ", tier " + m.period + " en cours");
+    startBreak(cur);
   },
   tfilter: function (d) { ui.tf[d.k] = d.v; render(); },
   livetier: function (d) { ui.liveTier = d.v; render(); },
@@ -2327,6 +2392,7 @@ function login(fb) {
 
 function boot() {
   render();
+  resumeBreak();
   var slowTimer = setTimeout(function () { if (state.loaded < COLLS.length) { state.slow = true; render(); } }, 10000);
   if (!FIREBASE_CONFIG.projectId) { state.failed = true; render(); return; }
   loadFirebase().then(function (fb) {

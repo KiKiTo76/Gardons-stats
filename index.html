@@ -77,7 +77,8 @@ button { cursor: pointer; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
 .card.flat { padding: 0; overflow: hidden; }
 .list > * + * { border-top: 1px solid var(--line); }
-.item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; min-width: 0; }
+.item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 14px 16px; min-width: 0; }
+.item > .grow { flex: 1 1 130px; }
 a.item:hover, button.item:hover { background: var(--surface-2); }
 button.item { width: 100%; background: none; border: 0; text-align: left; }
 .item .title { font-weight: 600; overflow-wrap: anywhere; }
@@ -411,7 +412,7 @@ function list(map) {
 }
 
 function newId(coll) {
-  return state.db.collection(coll).doc().id;
+  return state.db ? state.db.collection(coll).doc().id : Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
 
 function loadQueue() {
@@ -512,8 +513,11 @@ function fmtDate(iso, long) {
   var p = iso.split("-");
   var d = new Date(+p[0], +p[1] - 1, +p[2]);
   if (isNaN(d)) return iso;
-  return d.toLocaleDateString("fr-CA", long ? { weekday: "long", day: "numeric", month: "long", year: "numeric" } : { weekday: "short", day: "numeric", month: "short" });
+  return d.toLocaleDateString("fr-FR", long ? { weekday: "long", day: "numeric", month: "long", year: "numeric" } : { weekday: "short", day: "numeric", month: "short" });
 }
+
+function timeTxt(m) { return m && m.time ? " - " + m.time.replace(":", "h") : ""; }
+function matchKey(m) { return (m.date || "") + " " + (m.time || ""); }
 
 function todayIso() {
   var d = new Date();
@@ -604,7 +608,7 @@ function playerTotals(matches) {
 }
 
 function sortedMatches(arr) {
-  return arr.slice().sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+  return arr.slice().sort(function (a, b) { var x = matchKey(a), y = matchKey(b); return x < y ? 1 : x > y ? -1 : 0; });
 }
 
 function route() {
@@ -662,7 +666,7 @@ function openHint(ms) {
 function matchRow(m) {
   var o = outcome(m);
   var score = isOpen(m) ? '<span class="pill">' + (m.live ? "En cours" : "Non terminé") + " " + goalsFor(m) + " - " + goalsAgainst(m) + "</span>" : o === "u" ? '<span class="pill">À venir</span>' : '<span class="score ' + o + '">' + goalsFor(m) + " - " + goalsAgainst(m) + "</span>";
-  return '<a class="item" href="#match-' + m.id + '"><div class="grow"><div class="title">' + (m.home === false ? "@ " : "vs ") + esc(teamName(m.opponentId)) + '</div><div class="small muted">' + esc(fmtDate(m.date)) + "</div></div>" + score + "</a>";
+  return '<a class="item" href="#match-' + m.id + '"><div class="grow"><div class="title">' + (m.home === false ? "@ " : "vs ") + esc(teamName(m.opponentId)) + '</div><div class="small muted">' + esc(fmtDate(m.date) + timeTxt(m)) + "</div></div>" + score + "</a>";
 }
 
 function recordBar(r) {
@@ -687,11 +691,11 @@ function homeTop(s) {
 function viewHome() {
   var s = activeSeason();
   var all = list(state.matches);
-  var upcoming = all.filter(function (m) { return !m.played; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; })[0];
+  var upcoming = all.filter(function (m) { return !m.played; }).sort(function (a, b) { return matchKey(a) < matchKey(b) ? -1 : 1; })[0];
   var last = sortedMatches(all.filter(function (m) { return m.played; }))[0];
   var rec = s ? record(seasonMatches(s.id)) : { w: 0, l: 0, n: 0 };
   var hero = upcoming
-    ? '<div class="hero"><div class="eyebrow">Prochain match</div><h1>' + (upcoming.home === false ? "@ " : "vs ") + esc(teamName(upcoming.opponentId)) + '</h1><div class="row between" style="margin-top:10px"><span>' + esc(fmtDate(upcoming.date, true)) + '</span><a class="btn primary" href="#match-' + upcoming.id + '">Ouvrir</a></div></div>'
+    ? '<div class="hero"><div class="eyebrow">Prochain match</div><h1>' + (upcoming.home === false ? "@ " : "vs ") + esc(teamName(upcoming.opponentId)) + '</h1><div class="row between" style="margin-top:10px"><span>' + esc(fmtDate(upcoming.date, true) + timeTxt(upcoming)) + '</span><a class="btn primary" href="#match-' + upcoming.id + '">Ouvrir</a></div></div>'
     : '<div class="hero"><div class="eyebrow">Prochain match</div><h1>Aucun match prévu</h1><div class="row between" style="margin-top:10px"><span class="muted">' + (state.admin ? "Créez le prochain match en un geste." : "Revenez bientôt.") + "</span>" + (state.admin ? '<a class="btn primary" href="#reglages">+ Match</a>' : "") + "</div></div>";
   var lastTile = last
     ? '<a class="card" href="#match-' + last.id + '"><div class="eyebrow">Dernier match</div><div class="score ' + outcome(last) + '" style="font-size:2rem">' + goalsFor(last) + " - " + goalsAgainst(last) + '</div><div class="small muted">vs ' + esc(teamName(last.opponentId)) + "</div></a>"
@@ -721,7 +725,7 @@ function viewSeason() {
   }
   var s = state.seasons[sid];
   var ms = seasonMatches(sid);
-  var upcoming = ms.filter(function (m) { return !m.played; }).sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+  var upcoming = ms.filter(function (m) { return !m.played; }).sort(function (a, b) { var x = matchKey(a), y = matchKey(b); return x < y ? -1 : x > y ? 1 : 0; });
   var done = sortedMatches(ms.filter(function (m) { return m.played; }));
   var picker = seasons.length > 1 ? '<div class="field"><label for="season-sel">Saison affichée</label><select class="input" id="season-sel" data-change="seasonSel">' + seasons.map(function (x) {
     return '<option value="' + x.id + '"' + (x.id === sid ? " selected" : "") + ">" + esc(x.name) + (x.active ? " (en cours)" : "") + "</option>";
@@ -867,7 +871,7 @@ function byPosThenNum(a, b) {
 
 function initNewMatch() {
   var s = activeSeason();
-  ui.nm = { seasonId: s ? s.id : null, opp: null, date: todayIso(), home: true, addTeam: false };
+  ui.nm = { seasonId: s ? s.id : null, opp: null, date: todayIso(), time: "", home: true, addTeam: false };
 }
 
 function compoGroups(lineup, lines) {
@@ -966,7 +970,8 @@ function matchPrepForm() {
     return '<option value="' + x.id + '"' + (x.id === nm.seasonId ? " selected" : "") + ">" + esc(x.name) + (x.active ? " (en cours)" : "") + "</option>";
   }).join("") + "</select></div>";
   return '<div class="form">' + season +
-    '<div class="field"><label for="nm-date">Date</label><input class="input" type="date" id="nm-date" value="' + esc(nm.date) + '" data-change="nmDate"></div>' +
+    '<div class="row"><div class="field grow"><label for="nm-date">Date</label><input class="input" type="date" id="nm-date" value="' + esc(nm.date) + '" data-change="nmDate"></div>' +
+    '<div class="field grow"><label for="nm-time">Heure</label><input class="input" type="time" id="nm-time" value="' + esc(nm.time) + '" data-change="nmTime"></div></div>' +
     '<div class="field"><span class="label">Lieu</span><div class="chips"><button class="chip" data-act="nm-home" data-v="1" aria-pressed="' + nm.home + '">Domicile</button><button class="chip" data-act="nm-home" data-v="0" aria-pressed="' + !nm.home + '">Extérieur</button></div></div>' +
     '<div class="field"><span class="label">Équipe adverse</span><div class="chips">' + chips + "</div>" + addTeam + "</div>" +
     '<button class="btn primary block" data-act="nm-create"' + (nm.opp ? "" : " disabled") + ">Créer le match</button>" +
@@ -1049,7 +1054,7 @@ function boardHtml(m) {
   var home = m.home !== false;
   var gf = goalsFor(m), ga = goalsAgainst(m);
   var left = home ? TEAM_NAME : teamName(m.opponentId), right = home ? teamName(m.opponentId) : TEAM_NAME;
-  return '<div class="card"><div class="eyebrow" style="text-align:center">' + esc(fmtDate(m.date, true)) + (sn ? " - " + esc(sn.name) : "") + '</div><div class="board" style="margin-top:10px"><div class="team">' + esc(left) + '</div><div class="big num">' + (home ? gf : ga) + " - " + (home ? ga : gf) + '</div><div class="team">' + esc(right) + '</div></div><div style="text-align:center;margin-top:8px"><span class="pill ' + (o === "w" ? "w" : o === "l" ? "l" : "") + '">' + label + "</span></div></div>";
+  return '<div class="card"><div class="eyebrow" style="text-align:center">' + esc(fmtDate(m.date, true) + timeTxt(m)) + (sn ? " - " + esc(sn.name) : "") + '</div><div class="board" style="margin-top:10px"><div class="team">' + esc(left) + '</div><div class="big num">' + (home ? gf : ga) + " - " + (home ? ga : gf) + '</div><div class="team">' + esc(right) + '</div></div><div style="text-align:center;margin-top:8px"><span class="pill ' + (o === "w" ? "w" : o === "l" ? "l" : "") + '">' + label + "</span></div></div>";
 }
 
 function viewMatch(id) {
@@ -2037,7 +2042,7 @@ function matchExportData(id) {
   return {
     team: TEAM_NAME,
     opponent: teamName(m.opponentId),
-    date: fmtDate(m.date, true),
+    date: fmtDate(m.date, true) + timeTxt(m),
     home: !!m.home,
     season: state.seasons[m.seasonId] ? state.seasons[m.seasonId].name : "",
     played: !!m.played,
@@ -2121,7 +2126,7 @@ function statsExportData() {
     goalies: totals.filter(isG).map(function (t) {
       return { name: playerName(t.id), gp: t.gp, w: t.w, sh: t.sh, svc: t.svc, svn: t.svn, svw: t.svw, ga: t.sh - t.sv, g: t.g, a: t.a };
     }).sort(function (a, b) { return b.gp - a.gp || a.name.localeCompare(b.name); }),
-    matches: ms.slice().sort(function (a, b) { return (a.date || "") < (b.date || "") ? -1 : 1; }).map(function (m) {
+    matches: ms.slice().sort(function (a, b) { return matchKey(a) < matchKey(b) ? -1 : 1; }).map(function (m) {
       var o = outcome(m);
       return { date: serial(m.date), opponent: teamName(m.opponentId), home: !!m.home, gf: m.played ? goalsFor(m) : "", ga: m.played ? goalsAgainst(m) : "", result: o === "w" ? "Victoire" : o === "l" ? "Défaite" : o === "n" ? "Nul" : m.live ? "En cours" : "À venir" };
     }),
@@ -2358,7 +2363,7 @@ var actions = {
     var nm = ui.nm, s = state.seasons[nm.seasonId];
     if (!nm.opp || !s) return;
     var id = newId("matches");
-    var doc = { seasonId: nm.seasonId, opponentId: nm.opp, date: nm.date || todayIso(), home: nm.home, played: false, lineup: [], lines: {}, centers: {}, sides: {}, gk: {}, cap: { c: "", a1: "", a2: "" }, events: [] };
+    var doc = { seasonId: nm.seasonId, opponentId: nm.opp, date: nm.date || todayIso(), time: nm.time || "", home: nm.home, played: false, lineup: [], lines: {}, centers: {}, sides: {}, gk: {}, cap: { c: "", a1: "", a2: "" }, events: [] };
     state.matches[id] = doc;
     write("matches", id, doc, "set");
     ui.nm = null;
@@ -2481,6 +2486,7 @@ document.getElementById("app").addEventListener("change", function (e) {
   if (k === "histSeason") ui.histSeason = t.value;
   if (k === "statsSeason") ui.statsSeason = t.value;
   if (k === "nmDate") { ui.nm.date = t.value; return; }
+  if (k === "nmTime") { ui.nm.time = t.value; return; }
   if (k === "nmSeason") { ui.nm.seasonId = t.value; return; }
   if (k === "seasonSel") { ui.seasonSel = t.value; render(); return; }
   if (k === "rosterxlsx") { importRoster(t); return; }

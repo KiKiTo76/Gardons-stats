@@ -164,25 +164,8 @@
   function sumF(col, a, b) { return "SUM(" + col + a + ":" + col + b + ")"; }
   function ratioF(w, l, r) { return "IF(" + w + r + "+" + l + r + "=0,\"\"," + w + r + "/(" + w + r + "+" + l + r + "))"; }
 
-  function sheetSummary(wb, d) {
-    var ws = wb.add("Résumé");
-    ws.cols = [30, 14, 14, 14, 14];
-    banner(ws, 5, d.team.toUpperCase() + "  vs  " + d.opponent.toUpperCase(), d.date + "  -  " + (d.home ? "Domicile" : "Extérieur") + (d.season ? "  -  Saison " + d.season : ""));
-    ws.merge(5, 1, 5, 5, d.team + "  " + d.gf + " - " + d.ga + "  " + d.opponent, { b: true, sz: 22, bg: C.zebra, h: "center", v: "center" });
-    ws.height(5, 42);
-    ws.merge(6, 1, 6, 5, d.result.toUpperCase(), { b: true, sz: 12, color: d.result === "Victoire" ? C.good : d.result === "Défaite" ? C.bad : C.muted, bg: C.zebra, h: "center", v: "center" });
-    ws.height(6, 22);
-    var r = 8;
-    var any = false;
-    d.awards.forEach(function (a, i) {
-      if (!a) return;
-      any = true;
-      ws.set(r, 1, d.awardLabels[i], body(false, { b: true, left: true, bg: C.zebra }));
-      ws.merge(r, 2, r, 5, a.name + "  (" + a.line + ")", body(false, { left: true }));
-      r++;
-    });
-    if (any) r++;
-    ["Statistique", "Tier 1", "Tier 2", "Tier 3", "Match"].forEach(function (l, i) { ws.set(r, i + 1, l, hdr(i === 0)); });
+  function tierTable(ws, r, d, lastLabel) {
+    ["Statistique", "Tier 1", "Tier 2", "Tier 3", lastLabel].forEach(function (l, i) { ws.set(r, i + 1, l, hdr(i === 0)); });
     ws.height(r, 24);
     r++;
     d.groups.forEach(function (g) {
@@ -210,6 +193,28 @@
         r++;
       });
     });
+    return r;
+  }
+
+  function sheetSummary(wb, d) {
+    var ws = wb.add("Résumé");
+    ws.cols = [30, 14, 14, 14, 14];
+    banner(ws, 5, d.team.toUpperCase() + "  vs  " + d.opponent.toUpperCase(), d.date + "  -  " + (d.home ? "Domicile" : "Extérieur") + (d.season ? "  -  Saison " + d.season : ""));
+    ws.merge(5, 1, 5, 5, d.team + "  " + d.gf + " - " + d.ga + "  " + d.opponent, { b: true, sz: 22, bg: C.zebra, h: "center", v: "center" });
+    ws.height(5, 42);
+    ws.merge(6, 1, 6, 5, d.result.toUpperCase(), { b: true, sz: 12, color: d.result === "Victoire" ? C.good : d.result === "Défaite" ? C.bad : C.muted, bg: C.zebra, h: "center", v: "center" });
+    ws.height(6, 22);
+    var r = 8;
+    var any = false;
+    d.awards.forEach(function (a, i) {
+      if (!a) return;
+      any = true;
+      ws.set(r, 1, d.awardLabels[i], body(false, { b: true, left: true, bg: C.zebra }));
+      ws.merge(r, 2, r, 5, a.name + "  (" + a.line + ")", body(false, { left: true }));
+      r++;
+    });
+    if (any) r++;
+    r = tierTable(ws, r, d, "Match");
     r++;
     d.notes.forEach(function (n) {
       ws.merge(r, 1, r, 5, n, { sz: 9, i: true, color: C.muted, v: "top", wrap: true });
@@ -221,8 +226,8 @@
   function sheetPlayers(wb, d) {
     var ws = wb.add("Joueurs");
     ws.landscape = true;
-    var heads = ["Ligne", "N°", "Joueur", "Poste", "B", "A", "Pts", "+/-", "Pun. (min)", "HJ", "DI", "MJ gagnées", "MJ perdues", "MJ %", "Tirs crit.", "Tirs norm.", "Tirs ratés", "Danger"];
-    ws.cols = [8, 6, 26, 8, 6, 6, 6, 7, 10, 6, 6, 11, 11, 8, 9, 9, 9, 9];
+    var heads = ["Ligne", "N°", "Joueur", "Poste", "B", "A", "Pts", "+/-", "Pun. (min)", "HJ", "DI", "MG", "MP", "MG %", "Tirs crit.", "Tirs norm.", "Tirs ratés", "Danger"];
+    ws.cols = [8, 6, 26, 8, 6, 6, 6, 7, 10, 6, 6, 7, 7, 8, 9, 9, 9, 9];
     banner(ws, heads.length, "JOUEURS DE CHAMP", d.team + " vs " + d.opponent + "  -  " + d.date);
     var hr = 5;
     heads.forEach(function (l, i) { ws.set(hr, i + 1, l, hdr(false)); });
@@ -257,7 +262,7 @@
       ws.filter = "A" + hr + ":R" + last;
       wb.filters.push({ sheet: ws, ref: "$A$" + hr + ":$R$" + last });
     }
-    ws.merge(rows.length ? last + 3 : hr + 2, 1, rows.length ? last + 3 : hr + 2, heads.length, "HJ : hors-jeu. DI : dégagement interdit. MJ : mises au jeu. Danger : critique x2, normal x1,5, raté x1.", { sz: 9, i: true, color: C.muted });
+    ws.merge(rows.length ? last + 3 : hr + 2, 1, rows.length ? last + 3 : hr + 2, heads.length, "HJ : hors-jeu. DI : dégagement interdit. MG / MP : mises au jeu gagnées / perdues. Danger : critique x2, normal x1,5, raté x1.", { sz: 9, i: true, color: C.muted });
     ws.freeze = { x: 3, y: hr };
   }
 
@@ -356,15 +361,123 @@
     wb.filters.push({ sheet: ws, ref: "$A$5:$C$" + last });
   }
 
-  function build(JSZip, d) {
+  function sheetSeasonTeam(wb, d) {
+    var ws = wb.add("Équipe");
+    ws.cols = [30, 14, 14, 14, 14];
+    banner(ws, 5, d.team.toUpperCase() + "  -  STATISTIQUES", d.label + "  -  " + d.played + " match(s) terminé(s)");
+    var r = 5;
+    var rec = d.record;
+    [["Matchs joués", rec.gp], ["Victoires", rec.w], ["Défaites", rec.l], ["Nuls", rec.n], ["Buts pour", rec.gf], ["Buts contre", rec.ga], ["Différentiel", rec.gf - rec.ga]].forEach(function (x, i) {
+      ws.set(r, 1, x[0], body(false, { b: true, left: true, bg: C.zebra }));
+      ws.merge(r, 2, r, 5, x[1], body(false, { left: true, b: true, fmt: i === 6 ? "+0;-0;0" : "0" }));
+      r++;
+    });
+    r++;
+    if (!d.played) {
+      ws.merge(r, 1, r, 5, "Pas encore de statistiques : elles apparaissent dès qu'un match est terminé.", { i: true, color: C.muted });
+    } else {
+      r = tierTable(ws, r, d, "Cumul");
+      r++;
+      d.notes.forEach(function (n) {
+        ws.merge(r, 1, r, 5, n, { sz: 9, i: true, color: C.muted, v: "top", wrap: true });
+        ws.height(r, 26);
+        r++;
+      });
+    }
+  }
+
+  function sheetSeasonPlayers(wb, d) {
+    var ws = wb.add("Joueurs");
+    ws.landscape = true;
+    var heads = ["N°", "Joueur", "Poste", "MJ", "B", "A", "Pts", "Pts/MJ", "+/-", "Pun. (min)", "HJ", "DI", "MG", "MP", "MG %", "Tirs crit.", "Tirs norm.", "Tirs ratés", "Danger"];
+    ws.cols = [6, 26, 8, 6, 6, 6, 6, 8, 7, 10, 6, 6, 7, 7, 8, 9, 9, 9, 9];
+    banner(ws, heads.length, "JOUEURS DE CHAMP", d.team + "  -  " + d.label);
+    var hr = 5;
+    heads.forEach(function (l, i) { ws.set(hr, i + 1, l, hdr(false)); });
+    ws.height(hr, 24);
+    var first = hr + 1, rows = d.skaters, last = first + rows.length - 1;
+    rows.forEach(function (p, i) {
+      var r = first + i, zebra = i % 2 === 1;
+      var vals = [p.num, p.name, p.pos === "A" ? "Att." : p.pos === "D" ? "Déf." : p.pos, p.gp, p.g, p.a, { f: "E" + r + "+F" + r, v: p.g + p.a }, { f: "IF(D" + r + "=0,\"\",G" + r + "/D" + r + ")", v: p.gp ? (p.g + p.a) / p.gp : "" }, p.pm, p.pim, p.hj, p.di, p.fw, p.fl, { f: ratioF("M", "N", r), v: p.fw + p.fl ? p.fw / (p.fw + p.fl) : "" }, p.shc, p.shn, p.shm, p.danger];
+      vals.forEach(function (v, ci) {
+        ws.set(r, ci + 1, v, body(zebra, { left: ci === 1, b: ci === 6, fmt: ci === 7 ? "0.00" : ci === 8 ? "+0;-0;0" : ci === 14 ? "0%" : ci === 18 ? "0.0" : undefined }));
+      });
+    });
+    if (rows.length) {
+      var tr = last + 1;
+      var sum = function (k) { return rows.reduce(function (a, p) { return a + k(p); }, 0); };
+      var res = { E: sum(function (p) { return p.g; }), F: sum(function (p) { return p.a; }), G: sum(function (p) { return p.g + p.a; }), I: sum(function (p) { return p.pm; }), J: sum(function (p) { return p.pim; }), K: sum(function (p) { return p.hj; }), L: sum(function (p) { return p.di; }), M: sum(function (p) { return p.fw; }), N: sum(function (p) { return p.fl; }), P: sum(function (p) { return p.shc; }), Q: sum(function (p) { return p.shn; }), R: sum(function (p) { return p.shm; }), S: sum(function (p) { return p.danger; }) };
+      "ABCDEFGHIJKLMNOPQRS".split("").forEach(function (col, ci) {
+        var st = totalCell(col === "B");
+        if (col === "I") st.fmt = "+0;-0;0";
+        if (col === "O") st.fmt = "0%";
+        if (col === "S") st.fmt = "0.0";
+        var v = null;
+        if (col === "B") v = "TOTAL";
+        else if (res[col] != null) v = { f: sumF(col, first, last), v: res[col] };
+        else if (col === "O") v = { f: ratioF("M", "N", tr), v: res.M + res.N ? res.M / (res.M + res.N) : "" };
+        ws.set(tr, ci + 1, v, st);
+      });
+      ws.height(tr, 22);
+      var g = wb.styles.dxf(C.good, C.goodBg), b = wb.styles.dxf(C.bad, C.badBg);
+      ws.cf.push({ ref: "I" + first + ":I" + last, rules: [{ op: "greaterThan", val: 0, dxf: g }, { op: "lessThan", val: 0, dxf: b }] });
+      ws.filter = "A" + hr + ":S" + last;
+      wb.filters.push({ sheet: ws, ref: "$A$" + hr + ":$S$" + last });
+    } else {
+      ws.merge(hr + 1, 1, hr + 1, heads.length, "Pas encore de statistiques.", { i: true, color: C.muted });
+    }
+    var nr = rows.length ? last + 3 : hr + 3;
+    ws.merge(nr, 1, nr, heads.length, "MJ : matchs joués. HJ : hors-jeu. DI : dégagement interdit. MG / MP : mises au jeu gagnées / perdues. Danger : critique x2, normal x1,5, raté x1.", { sz: 9, i: true, color: C.muted });
+    ws.freeze = { x: 2, y: hr };
+  }
+
+  function sheetSeasonGoalies(wb, d) {
+    var ws = wb.add("Gardiens");
+    ws.landscape = true;
+    var heads = ["Gardien", "MJ", "Victoires", "Tirs reçus", "Arrêts crit.", "Arrêts norm.", "Arrêts pond.", "Buts encaissés", "% arrêts", "B", "A"];
+    ws.cols = [26, 6, 10, 11, 11, 11, 12, 12, 10, 6, 6];
+    banner(ws, heads.length, "GARDIENS", d.team + "  -  " + d.label);
+    heads.forEach(function (l, i) { ws.set(5, i + 1, l, hdr(false)); });
+    ws.height(5, 24);
+    d.goalies.forEach(function (g, i) {
+      var r = 6 + i, zebra = i % 2 === 1;
+      var vals = [g.name, g.gp, g.w, g.sh, g.svc, g.svn, { f: "E" + r + "*2+F" + r, v: g.svw }, g.ga, { f: "IF(D" + r + "=0,\"\",(E" + r + "+F" + r + ")/D" + r + ")", v: g.sh ? (g.svc + g.svn) / g.sh : "" }, g.g, g.a];
+      vals.forEach(function (v, ci) { ws.set(r, ci + 1, v, body(zebra, { left: ci === 0, b: ci === 8, fmt: ci === 8 ? "0.0%" : ci === 6 ? "0.0" : undefined })); });
+    });
+    if (!d.goalies.length) ws.merge(6, 1, 6, heads.length, "Aucune donnée gardien.", { i: true, color: C.muted });
+  }
+
+  function sheetSeasonMatches(wb, d) {
+    var ws = wb.add("Matchs");
+    var heads = ["Date", "Adversaire", "Lieu", "Gardons", "Adverse", "Résultat"];
+    ws.cols = [14, 28, 12, 11, 11, 13];
+    banner(ws, heads.length, "MATCHS", d.team + "  -  " + d.label);
+    heads.forEach(function (l, i) { ws.set(5, i + 1, l, hdr(false)); });
+    ws.height(5, 24);
+    d.matches.forEach(function (m, i) {
+      var r = 6 + i, zebra = i % 2 === 1;
+      var res = m.result;
+      var o = { b: true };
+      if (res === "Victoire") { o.color = C.good; o.bg = C.goodBg; } else if (res === "Défaite") { o.color = C.bad; o.bg = C.badBg; }
+      [m.date, m.opponent, m.home ? "Domicile" : "Extérieur", m.gf, m.ga, res].forEach(function (v, ci) {
+        ws.set(r, ci + 1, v, body(zebra, ci === 5 ? o : { left: ci === 1, fmt: ci === 0 ? "dd/mm/yyyy" : undefined, b: ci === 3 || ci === 4 }));
+      });
+    });
+    if (!d.matches.length) ws.merge(6, 1, 6, heads.length, "Aucun match.", { i: true, color: C.muted });
+    ws.freeze = { y: 5 };
+    if (d.matches.length) {
+      ws.filter = "A5:F" + (5 + d.matches.length);
+      wb.filters.push({ sheet: ws, ref: "$A$5:$F$" + (5 + d.matches.length) });
+    }
+  }
+
+  function newBook() {
     var wb = { styles: new Styles(), sheets: [], filters: [] };
     wb.add = function (name) { var s = new Sheet(name, wb.styles); wb.sheets.push(s); return s; };
-    sheetSummary(wb, d);
-    sheetPlayers(wb, d);
-    sheetGoalies(wb, d);
-    sheetFaceoffs(wb, d);
-    sheetGoals(wb, d);
-    sheetFeed(wb, d);
+    return wb;
+  }
+
+  function pack(JSZip, wb) {
     var zip = new JSZip();
     var n = wb.sheets.length;
     var types = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
@@ -382,6 +495,27 @@
     return zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   }
 
+  function build(JSZip, d) {
+    var wb = newBook();
+    sheetSummary(wb, d);
+    sheetPlayers(wb, d);
+    sheetGoalies(wb, d);
+    sheetFaceoffs(wb, d);
+    sheetGoals(wb, d);
+    sheetFeed(wb, d);
+    return pack(JSZip, wb);
+  }
+
+  function buildSeason(JSZip, d) {
+    var wb = newBook();
+    sheetSeasonTeam(wb, d);
+    sheetSeasonPlayers(wb, d);
+    sheetSeasonGoalies(wb, d);
+    sheetSeasonMatches(wb, d);
+    return pack(JSZip, wb);
+  }
+
+  root.buildSeasonXlsx = buildSeason;
   root.buildMatchXlsx = build;
   if (typeof module !== "undefined" && module.exports) module.exports = build;
 })(typeof window !== "undefined" ? window : globalThis);

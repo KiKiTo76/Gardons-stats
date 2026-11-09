@@ -826,7 +826,7 @@ function viewStats() {
       : emptyState("Aucune donnée gardien", "Les arrêts et tirs reçus se saisissent dans la feuille de match.");
   }
   var pf = ui.statsView === "players" ? filterBar(false, ["all", "A", "D"]) : "";
-  return '<div class="stack">' + topbar("Stats") + cards + filter + pf + table + "</div>";
+  return '<div class="stack">' + topbar("Stats") + cards + filter + pf + '<div class="row"><button class="btn" data-act="xlsxs">Exporter en Excel</button></div>' + table + "</div>";
 }
 
 ui.nm = null;
@@ -1991,7 +1991,7 @@ function matchExportData(id) {
     ],
     awardLabels: ["Meilleur pointeur", "Homme du match", "Gardien du match"],
     tiers: PERIODS.concat(["all"]).map(function (k) { return { key: k, has: k === "all" || tierHasData(S.T[k]), m: tierMetrics(S.T[k]) }; }),
-    groups: TIER_GROUPS.map(function (g) { return { title: g.title, specs: g.specs.map(function (sp) { return { l: sp.l, k: sp.k, dir: sp.dir || 0, kind: sp.kind || "" }; }) }; }),
+    groups: exportGroups(),
     skaters: rows.filter(function (r) { return !r.isG; }).map(function (r) {
       var c = fo[r.id] || {};
       return { line: r.line, num: r.num, name: r.name, pos: r.pos, g: r.g, a: r.a, pm: r.pm, pim: r.pim, hj: r.hj, di: r.di, fw: r.fw, fl: r.fl, shc: r.shc, shn: r.shn, shm: r.shm, danger: r.danger, fo: c };
@@ -2001,11 +2001,7 @@ function matchExportData(id) {
     }),
     goals: goals,
     events: evs(m).map(function (e) { return { time: hhmm(e.t), per: e.per || 1, text: eventText(e), type: e.type }; }),
-    notes: [
-      "Tier : période du match (T1, T2, T3). Pondération des tirs : critique " + fmt1(SHOT_W.critical) + ", normal " + fmt1(SHOT_W.normal) + ", raté " + fmt1(SHOT_W.missed) + ".",
-      "Un but compte comme un tir critique, un but encaissé comme un tir adverse critique. Gardien : arrêt critique " + fmt1(SAVE_W.critical) + ", arrêt normal " + fmt1(SAVE_W.normal) + ".",
-      "+/- : règle officielle de la LNH, joueurs de champ uniquement. Dans le bilan par tier, vert = meilleur tier, rouge = moins bon tier."
-    ]
+    notes: exportNotes()
   };
 }
 
@@ -2024,15 +2020,66 @@ function downloadBlob(blob, name) {
   anchor();
 }
 
-function exportMatchXlsx(id) {
-  if (!window.JSZip || !window.buildMatchXlsx) { toast("Export indisponible : rechargez la page avec le réseau"); return; }
-  var data = matchExportData(id);
-  if (!data) return;
-  var name = ("Gardons_vs_" + data.opponent + "_" + (state.matches[id].date || "")).replace(/[^A-Za-z0-9_-]+/g, "_") + ".xlsx";
-  window.buildMatchXlsx(window.JSZip, data).then(function (buf) {
+function xlsxDownload(builder, data, name) {
+  if (!window.JSZip || !builder) { toast("Export indisponible : rechargez la page avec le réseau"); return; }
+  builder(window.JSZip, data).then(function (buf) {
     downloadBlob(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), name);
     toast("Excel généré");
   }).catch(function () { toast("Échec de l'export"); });
+}
+
+function exportMatchXlsx(id) {
+  var data = matchExportData(id);
+  if (!data) return;
+  xlsxDownload(window.buildMatchXlsx, data, ("Gardons_vs_" + data.opponent + "_" + (state.matches[id].date || "")).replace(/[^A-Za-z0-9_-]+/g, "_") + ".xlsx");
+}
+
+function exportGroups() {
+  return TIER_GROUPS.map(function (g) { return { title: g.title, specs: g.specs.map(function (sp) { return { l: sp.l, k: sp.k, dir: sp.dir || 0, kind: sp.kind || "" }; }) }; });
+}
+
+function statsExportData() {
+  var ms, label;
+  if (ui.statsSeason === "all") { ms = list(state.matches); label = "Toutes saisons"; }
+  else {
+    var sea = ui.statsSeason === "active" ? activeSeason() : state.seasons[ui.statsSeason];
+    ms = sea ? seasonMatches(sea.id) : [];
+    label = sea ? "Saison " + sea.name : "Aucune saison";
+  }
+  var played = ms.filter(function (x) { return x.played; });
+  var S = sumLive(played.map(function (x) { return liveStats(x); }));
+  var totals = playerTotals(ms);
+  var isG = function (t) { return state.players[t.id] && state.players[t.id].pos === "G"; };
+  var serial = function (iso) { var p = (iso || "").split("-"); return p.length === 3 ? Math.round(Date.UTC(+p[0], +p[1] - 1, +p[2]) / 86400000) + 25569 : null; };
+  return {
+    team: TEAM_NAME, label: label, played: played.length, record: record(ms),
+    tiers: PERIODS.concat(["all"]).map(function (k) { return { key: k, has: k === "all" || tierHasData(S.T[k]), m: tierMetrics(S.T[k]) }; }),
+    groups: exportGroups(),
+    skaters: totals.filter(function (t) { return !isG(t); }).map(function (t) {
+      return { num: state.players[t.id] ? state.players[t.id].num : 0, name: playerName(t.id), pos: state.players[t.id] ? state.players[t.id].pos : "", gp: t.gp, g: t.g, a: t.a, pm: t.pm, pim: t.pim, hj: t.hj, di: t.di, fw: t.fw, fl: t.fl, shc: t.shc, shn: t.shn, shm: t.shm, danger: dangerOf(t.shc, t.shn, t.shm) };
+    }).sort(function (a, b) { return (b.g + b.a) - (a.g + a.a) || b.g - a.g || a.name.localeCompare(b.name); }),
+    goalies: totals.filter(isG).map(function (t) {
+      return { name: playerName(t.id), gp: t.gp, w: t.w, sh: t.sh, svc: t.svc, svn: t.svn, svw: t.svw, ga: t.sh - t.sv, g: t.g, a: t.a };
+    }).sort(function (a, b) { return b.gp - a.gp || a.name.localeCompare(b.name); }),
+    matches: ms.slice().sort(function (a, b) { return (a.date || "") < (b.date || "") ? -1 : 1; }).map(function (m) {
+      var o = outcome(m);
+      return { date: serial(m.date), opponent: teamName(m.opponentId), home: !!m.home, gf: m.played ? goalsFor(m) : "", ga: m.played ? goalsAgainst(m) : "", result: o === "w" ? "Victoire" : o === "l" ? "Défaite" : o === "n" ? "Nul" : m.live ? "En cours" : "À venir" };
+    }),
+    notes: exportNotes()
+  };
+}
+
+function exportStatsXlsx() {
+  var data = statsExportData();
+  xlsxDownload(window.buildSeasonXlsx, data, ("Gardons_stats_" + data.label).replace(/[^A-Za-z0-9_-]+/g, "_") + ".xlsx");
+}
+
+function exportNotes() {
+  return [
+    "Tier : période du match (T1, T2, T3). Pondération des tirs : critique " + fmt1(SHOT_W.critical) + ", normal " + fmt1(SHOT_W.normal) + ", raté " + fmt1(SHOT_W.missed) + ".",
+    "Un but compte comme un tir critique, un but encaissé comme un tir adverse critique. Gardien : arrêt critique " + fmt1(SAVE_W.critical) + ", arrêt normal " + fmt1(SAVE_W.normal) + ".",
+    "+/- : règle officielle de la LNH, joueurs de champ uniquement. Dans le bilan par tier, vert = meilleur tier, rouge = moins bon tier."
+  ];
 }
 
 var actions = {
@@ -2120,6 +2167,7 @@ var actions = {
   opp: function (d) { ui.sheet = { mid: d.m, pid: null, step: "opp", opp: true, pen: "mineure", foul: null }; render(); },
   fodetail: function (d) { ui.foDetail = ui.foDetail === d.v ? null : d.v; render(); },
   xlsx: function (d) { exportMatchXlsx(d.m); },
+  xlsxs: function () { exportStatsXlsx(); },
   evdel: function (d) {
     var m = state.matches[d.m]; if (!m) return;
     m.events = evs(m).filter(function (e) { return e.id !== d.e; });

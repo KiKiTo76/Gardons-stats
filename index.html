@@ -2326,6 +2326,7 @@ var actions = {
   },
   played: function (d) {
     var m = state.matches[d.m]; if (!m) return;
+    if (d.v === "1" && (m.period || 1) < 3) { toast("Terminez d'abord les tiers 1 et 2"); return; }
     m.played = d.v === "1";
     if (m.played) m.live = false;
     write("matches", d.m, m.played ? { played: true, live: false } : { played: false }, "update");

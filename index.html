@@ -294,6 +294,7 @@ button.stat { font: inherit; color: inherit; background: var(--surface); border:
 .breakbar .brow { display: flex; align-items: center; gap: 10px; padding: 4px 4px 4px 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .breakbar .bprog { display: block; height: 4px; background: var(--line); }
 .breakbar .bprog i { display: block; height: 100%; width: 0; background: var(--accent); }
+.notetext { overflow-wrap: anywhere; white-space: pre-wrap; }
 .breakbar.late { border-color: var(--bad); }
 .breakbar.late .bprog i { background: var(--bad); }
 @media (min-width: 900px) { .breakbar { left: calc(var(--side-w) + 16px); bottom: 16px; } }
@@ -338,6 +339,8 @@ function esc(s) {
     return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
   });
 }
+
+ICON.note = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17v3z"/><path d="M14 7l3 3"/></svg>';
 
 var BREAK_KEY = "gardons-break";
 var BREAK_MAX = 900000;
@@ -606,7 +609,7 @@ function sortedMatches(arr) {
 
 function route() {
   var h = (location.hash || "").replace(/^#/, "") || "accueil";
-  var m = h.match(/^(match|equipe|feuille|live)-([A-Za-z0-9_-]+)$/);
+  var m = h.match(/^(match|equipe|feuille|live|notes)-([A-Za-z0-9_-]+)$/);
   if (m) return { name: m[1], id: m[2] };
   return { name: h };
 }
@@ -620,7 +623,7 @@ function liveLockId() {
 function navHtml(current) {
   var lock = liveLockId();
   if (lock) {
-    return [["feuille", "Match live", ICON.season], ["live", "Stats live", ICON.stats]].map(function (i) {
+    return [["feuille", "Match live", ICON.season], ["live", "Stats live", ICON.stats], ["notes", "Notes", ICON.note]].map(function (i) {
       return '<a class="tab" href="#' + i[0] + "-" + lock + '"' + (i[0] === current ? ' aria-current="page"' : "") + ">" + i[2] + "<span>" + i[1] + "</span></a>";
     }).join("");
   }
@@ -649,9 +652,16 @@ function emptyState(title, text, action) {
   return '<div class="card empty"><b>' + esc(title) + "</b>" + esc(text) + (action ? '<div style="margin-top:14px">' + action + "</div>" : "") + "</div>";
 }
 
+function isOpen(m) { return !m.played && (m.live === true || evs(m).length > 0); }
+
+function openHint(ms) {
+  var n = ms.filter(isOpen).length;
+  return n ? '<div class="note">' + n + " match" + (n > 1 ? "s" : "") + " non terminé" + (n > 1 ? "s" : "") + " : le bilan ne compte que les matchs terminés. Ouvrez la feuille de match et touchez Terminer le match.</div>" : "";
+}
+
 function matchRow(m) {
   var o = outcome(m);
-  var score = o === "u" ? '<span class="pill">À venir</span>' : '<span class="score ' + o + '">' + goalsFor(m) + " - " + goalsAgainst(m) + "</span>";
+  var score = isOpen(m) ? '<span class="pill">' + (m.live ? "En cours" : "Non terminé") + " " + goalsFor(m) + " - " + goalsAgainst(m) + "</span>" : o === "u" ? '<span class="pill">À venir</span>' : '<span class="score ' + o + '">' + goalsFor(m) + " - " + goalsAgainst(m) + "</span>";
   return '<a class="item" href="#match-' + m.id + '"><div class="grow"><div class="title">' + (m.home === false ? "@ " : "vs ") + esc(teamName(m.opponentId)) + '</div><div class="small muted">' + esc(fmtDate(m.date)) + "</div></div>" + score + "</a>";
 }
 
@@ -727,10 +737,9 @@ function viewSeason() {
 
 function viewHistory() {
   var seasons = list(state.seasons).sort(function (a, b) { return a.name < b.name ? 1 : -1; });
-  var past = seasons.filter(function (s) { return !s.active; });
-  var options = past.length ? past : seasons;
-  if (!ui.histSeason || !state.seasons[ui.histSeason]) ui.histSeason = options.length ? options[0].id : null;
-  var sel = ui.histSeason ? state.seasons[ui.histSeason] : null;
+  var cur = seasons.filter(function (s) { return s.active; })[0] || seasons[0];
+  if (!ui.histSeason || !state.seasons[ui.histSeason]) ui.histSeason = cur ? cur.id : null;
+  var sel = ui.histSeason && state.seasons[ui.histSeason] ? Object.assign({ id: ui.histSeason }, state.seasons[ui.histSeason]) : null;
   var seasonBlock;
   if (!sel) {
     seasonBlock = emptyState("Aucune saison", "L'historique apparaîtra dès qu'une saison existe.");
@@ -738,7 +747,7 @@ function viewHistory() {
     var ms = sortedMatches(seasonMatches(sel.id));
     seasonBlock = '<div class="field"><label for="hist-season">Saison</label><select class="input" id="hist-season" data-change="histSeason">' +
       seasons.map(function (s) { return '<option value="' + s.id + '"' + (s.id === sel.id ? " selected" : "") + ">" + esc(s.name) + (s.active ? " (en cours)" : "") + "</option>"; }).join("") +
-      "</select></div>" + recordBar(record(ms)) + '<div class="row between"><h2>' + ms.length + " match" + (ms.length > 1 ? "s" : "") + "</h2></div>" +
+      "</select></div>" + recordBar(record(ms)) + openHint(ms) + '<div class="row between"><h2>' + ms.length + " match" + (ms.length > 1 ? "s" : "") + "</h2></div>" +
       (ms.length ? '<div class="card flat list">' + ms.map(matchRow).join("") + "</div>" : emptyState("Aucun match", "Cette saison ne contient pas encore de match."));
   }
   var teams = list(state.teams).map(function (t) {
@@ -751,6 +760,23 @@ function viewHistory() {
     }).join("") + "</div>"
     : emptyState("Aucun adversaire", "Les équipes rencontrées apparaîtront ici avec le bilan global.");
   return '<div class="stack">' + topbar("Historique") + seasonBlock + "<h2>Face aux adversaires</h2>" + teamBlock + "</div>";
+}
+
+function viewNotes(id) {
+  var m = state.matches[id];
+  if (!m) return '<div class="stack">' + backBar("#saison", "Saison en cours") + emptyState("Match introuvable", "Ce match a été supprimé ou n'existe pas.") + "</div>";
+  m = Object.assign({ id: id }, m);
+  if (ui.noteFor !== id) { ui.noteFor = id; ui.noteDraft = ""; ui.noteEdit = null; }
+  var locked = liveLockId() === id;
+  var notes = (Array.isArray(m.notes) ? m.notes : []).slice().reverse();
+  var editing = ui.noteEdit;
+  var items = notes.map(function (n) {
+    return '<div class="item"><div class="grow" style="min-width:0"><div class="small muted num">' + hhmm(n.t) + (n.per ? " - T" + n.per : "") + '</div><div class="notetext">' + esc(n.text) + '</div><div class="row" style="gap:0;margin-top:4px"><button class="btn ghost" data-act="note-edit" data-n="' + esc(n.id) + '">Modifier</button><button class="btn ghost danger" data-act="note-del" data-n="' + esc(n.id) + '">Supprimer</button></div></div></div>';
+  }).join("");
+  return '<div class="stack">' + (locked ? "" : backBar("#live-" + id, "Résumé du match")) + "<h1>Notes</h1>" + boardHtml(m) +
+    '<div class="field"><label for="note-input">' + (editing ? "Modifier la note" : "Nouvelle note") + '</label><div class="inline-form"><input class="input" id="note-input" type="text" enterkeyhint="send" autocomplete="off" autocapitalize="sentences" placeholder="Écrire puis Entrée" value="' + esc(ui.noteDraft || "") + '"><button class="btn primary" data-act="note-add">' + (editing ? "Enregistrer" : "Ajouter") + "</button>" + (editing ? '<button class="btn" data-act="note-cancel">Annuler</button>' : "") + "</div></div>" +
+    "<h2>" + notes.length + " note" + (notes.length > 1 ? "s" : "") + "</h2>" +
+    (items ? '<div class="card flat list">' + items + "</div>" : emptyState("Aucune note", "Écrivez une remarque pendant le match : elle est datée et rattachée au tier en cours.")) + "</div>";
 }
 
 function viewTeam(id) {
@@ -785,7 +811,7 @@ function viewStats() {
   var ms;
   if (ui.statsSeason === "all") ms = list(state.matches);
   else {
-    var s = ui.statsSeason === "active" ? activeSeason() : state.seasons[ui.statsSeason];
+    var s = ui.statsSeason === "active" ? activeSeason() : state.seasons[ui.statsSeason] ? Object.assign({ id: ui.statsSeason }, state.seasons[ui.statsSeason]) : null;
     ms = s ? seasonMatches(s.id) : [];
   }
   var totals = playerTotals(ms);
@@ -1574,7 +1600,7 @@ function viewLive(id) {
   if (ui.liveFor !== id) { ui.liveFor = id; ui.liveTier = m.played ? "all" : String(Math.min(m.period || 1, 3)); }
   var key = ui.liveTier;
   var back = state.admin ? backBar("#feuille-" + id, m.played ? "Feuille de match" : "Match live") : backBar("#match-" + id, "Fiche du match");
-  var out = '<div class="stack">' + back + "<h1>" + (m.played ? "Résumé du match" : "Stats live") + "</h1>" + boardHtml(m) + periodPill(m) + '<div class="row"><button class="btn" data-act="xlsx" data-m="' + id + '">Exporter en Excel</button></div>' + (m.played ? awardsHtml(m) + bilanHtml(S) : "") + tierChips("livetier", key) + liveBlocks(S, key, m) + (key === "all" ? goalsRecap(m) : "");
+  var out = '<div class="stack">' + back + "<h1>" + (m.played ? "Résumé du match" : "Stats live") + "</h1>" + boardHtml(m) + periodPill(m) + '<div class="row"><button class="btn" data-act="xlsx" data-m="' + id + '">Exporter en Excel</button>' + (state.admin ? '<a class="btn" href="#notes-' + id + '">Notes' + (Array.isArray(m.notes) && m.notes.length ? " (" + m.notes.length + ")" : "") + "</a>" : "") + "</div>" + (m.played ? awardsHtml(m) + bilanHtml(S) : "") + tierChips("livetier", key) + liveBlocks(S, key, m) + (key === "all" ? goalsRecap(m) : "");
   var per = key === "all" ? null : key;
   var base = matchRows(m, per).filter(function (r) {
     return (m.lineup || []).indexOf(r.id) >= 0 && (r.isG ? r.active : ((m.lines && m.lines[r.id]) || r.active));
@@ -1796,12 +1822,12 @@ function render() {
   var r = route();
   if (r.name === "nouveau") { location.replace("#reglages"); r = route(); }
   var lock = state.loaded >= COLLS.length ? liveLockId() : null;
-  if (lock && !((r.name === "feuille" || r.name === "live") && r.id === lock)) {
+  if (lock && !((r.name === "feuille" || r.name === "live" || r.name === "notes") && r.id === lock)) {
     location.replace("#feuille-" + lock);
     r = route();
   }
   var app = document.getElementById("app");
-  var current = r.name === "feuille" || r.name === "live" ? r.name : r.name === "match" ? "saison" : r.name === "equipe" ? "historique" : r.name;
+  var current = r.name === "feuille" || r.name === "live" || r.name === "notes" ? r.name : r.name === "match" ? "saison" : r.name === "equipe" ? "historique" : r.name;
   var html;
   if (state.failed) {
     html = emptyState("Données indisponibles", "Impossible de joindre la base de données. Vérifiez la connexion et la configuration Firebase.");
@@ -1818,6 +1844,7 @@ function render() {
   else if (r.name === "match") html = viewMatch(r.id);
   else if (r.name === "live") html = viewLive(r.id);
   else if (r.name === "feuille") html = state.admin ? viewSheetPage(r.id) : viewMatch(r.id);
+  else if (r.name === "notes") html = state.admin ? viewNotes(r.id) : viewMatch(r.id);
   else if (r.name === "equipe") html = viewTeam(r.id);
   else { html = viewHome(); current = "accueil"; }
   var y = window.scrollY;
@@ -2000,6 +2027,7 @@ function matchExportData(id) {
       return { num: r.num, name: r.name, status: m.gk && m.gk[r.id] === "B" ? "Backup" : "Titulaire", sh: r.sh, svc: r.svc, svn: r.svn, svw: r.svw, ga: r.ga, adm: r.adm };
     }),
     goals: goals,
+    matchNotes: (Array.isArray(m.notes) ? m.notes : []).map(function (n) { return { time: hhmm(n.t), per: n.per || 1, text: n.text }; }),
     events: evs(m).map(function (e) { return { time: hhmm(e.t), per: e.per || 1, text: eventText(e), type: e.type }; }),
     notes: exportNotes()
   };
@@ -2042,7 +2070,7 @@ function statsExportData() {
   var ms, label;
   if (ui.statsSeason === "all") { ms = list(state.matches); label = "Toutes saisons"; }
   else {
-    var sea = ui.statsSeason === "active" ? activeSeason() : state.seasons[ui.statsSeason];
+    var sea = ui.statsSeason === "active" ? activeSeason() : state.seasons[ui.statsSeason] ? Object.assign({ id: ui.statsSeason }, state.seasons[ui.statsSeason]) : null;
     ms = sea ? seasonMatches(sea.id) : [];
     label = sea ? "Saison " + sea.name : "Aucune saison";
   }
@@ -2090,6 +2118,40 @@ var actions = {
   },
   statsview: function (d) { ui.statsView = d.v; render(); },
   pl: function (d) { ui.sheet = { mid: d.m, pid: d.p, step: "actions", pen: "mineure", foul: null }; render(); },
+  "note-add": function () {
+    var el = document.getElementById("note-input");
+    var text = el ? el.value.trim() : "";
+    var id = route().id, m = state.matches[id];
+    if (!m) return;
+    if (!text) { if (el) el.focus(); return; }
+    var notes = Array.isArray(m.notes) ? m.notes.slice() : [];
+    if (ui.noteEdit) {
+      notes = notes.map(function (n) { return n.id === ui.noteEdit ? Object.assign({}, n, { text: text }) : n; });
+      ui.noteEdit = null;
+    } else notes.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: Date.now(), per: m.period || 1, text: text });
+    m.notes = notes;
+    ui.noteDraft = "";
+    write("matches", id, { notes: notes.slice() }, "update");
+    render();
+    var again = document.getElementById("note-input");
+    if (again) again.focus();
+  },
+  "note-edit": function (d) {
+    var m = state.matches[route().id]; if (!m) return;
+    var n = (m.notes || []).filter(function (x) { return x.id === d.n; })[0]; if (!n) return;
+    ui.noteEdit = n.id; ui.noteDraft = n.text;
+    render();
+    var el = document.getElementById("note-input");
+    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+  },
+  "note-cancel": function () { ui.noteEdit = null; ui.noteDraft = ""; render(); },
+  "note-del": function (d) {
+    var id = route().id, m = state.matches[id]; if (!m) return;
+    m.notes = (m.notes || []).filter(function (x) { return x.id !== d.n; });
+    if (ui.noteEdit === d.n) { ui.noteEdit = null; ui.noteDraft = ""; }
+    write("matches", id, { notes: m.notes.slice() }, "update");
+    render(); toast("Note supprimée");
+  },
   "sheet-close": function () { ui.sheet = null; render(); },
   ev: function (d) { ui.sheet = null; addEvent(d.m, d.p, d.type); },
   "goal-open": function () { ui.sheet.step = "goal"; ui.sheet.ast = []; ui.sheet.ice = []; render(); },
@@ -2354,6 +2416,14 @@ document.getElementById("app").addEventListener("click", function (e) {
   if (fn) fn(t.dataset);
 });
 
+document.getElementById("app").addEventListener("keydown", function (e) {
+  if (e.target.id === "note-input" && e.key === "Enter" && !e.isComposing) { e.preventDefault(); actions["note-add"](); }
+});
+
+document.getElementById("app").addEventListener("input", function (e) {
+  if (e.target.id === "note-input") ui.noteDraft = e.target.value;
+});
+
 document.getElementById("app").addEventListener("change", function (e) {
   var t = e.target.closest("[data-change]");
   if (!t) return;
@@ -2382,6 +2452,7 @@ document.addEventListener("keydown", function (e) {
 window.addEventListener("hashchange", function () {
   if (route().name !== "reglages") ui.nm = null;
   if (route().name !== "live") ui.liveFor = null;
+  if (route().name !== "notes") ui.noteEdit = null;
   ui.edit = null; ui.confirmDel = null; ui.sheet = null; ui.rosterMsg = null; ui.foDetail = null;
   render(); window.scrollTo(0, 0);
 });

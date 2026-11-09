@@ -343,6 +343,20 @@
     ws.freeze = { y: 5 };
   }
 
+  function sheetNotes(wb, d) {
+    if (!d.matchNotes || !d.matchNotes.length) return;
+    var ws = wb.add("Notes");
+    ws.cols = [9, 7, 90];
+    banner(ws, 3, "NOTES", d.team + " vs " + d.opponent + "  -  " + d.date);
+    ["Heure", "Tier", "Note"].forEach(function (l, i) { ws.set(5, i + 1, l, hdr(false)); });
+    ws.height(5, 24);
+    d.matchNotes.forEach(function (n, i) {
+      var r = 6 + i, zebra = i % 2 === 1;
+      [n.time, n.per, n.text].forEach(function (v, ci) { ws.set(r, ci + 1, v, body(zebra, { left: ci === 2, wrap: ci === 2 })); });
+    });
+    ws.freeze = { y: 5 };
+  }
+
   function sheetFeed(wb, d) {
     var ws = wb.add("Fil du match");
     ws.cols = [9, 7, 90];
@@ -502,6 +516,7 @@
     sheetGoalies(wb, d);
     sheetFaceoffs(wb, d);
     sheetGoals(wb, d);
+    sheetNotes(wb, d);
     sheetFeed(wb, d);
     return pack(JSZip, wb);
   }

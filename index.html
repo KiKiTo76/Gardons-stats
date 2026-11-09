@@ -229,10 +229,10 @@ h3 { font-style: italic; }
 .lineblock > h2 { writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; font-size: 0.8rem; letter-spacing: 0.2em; margin: 0; }
 .lrows { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .frow { gap: 8px; }
-.pcard { flex-direction: row; justify-content: flex-start; gap: 8px; padding: 6px 8px; min-height: 52px; text-align: left; }
+.pcard { flex-direction: row; flex-wrap: wrap; justify-content: flex-start; gap: 6px 8px; padding: 6px 8px; min-height: 52px; text-align: left; }
 .pcard .jersey { width: 30px; height: 30px; font-size: 0.95rem; }
 .pcard .title { font-size: 0.85rem; flex: 1 1 auto; min-width: 0; }
-.pcard .badges { justify-content: flex-start; max-width: none; flex: none; }
+.pcard .badges { justify-content: flex-start; max-width: none; flex: 1 0 100%; }
 .cbadge, .lbadge { top: -8px; height: 18px; min-width: 18px; font-size: 0.65rem; }
 .lbadge { width: 18px; }
 .live { gap: 8px; }
@@ -246,12 +246,15 @@ h3 { font-style: italic; }
 .live .btn { min-height: 44px; }
 .live .plgrid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
 .live .plbtn { min-height: 52px; padding: 6px 10px; }
+.facts { display: flex; gap: 2px; flex: none; }
 @media (max-width: 640px) {
+  .feeditem { flex-wrap: wrap; row-gap: 0; padding-block: 10px 4px; }
+  .feeditem .facts { flex: 1 0 100%; justify-content: flex-end; margin-top: -4px; }
   .lineblock { grid-template-columns: 1fr; }
   .lineblock > h2 { writing-mode: horizontal-tb; transform: none; text-align: left; }
   .pcard { flex-direction: column; justify-content: center; text-align: center; gap: 4px; min-height: 84px; }
   .pcard .title { flex: none; }
-  .pcard .badges { justify-content: center; }
+  .pcard .badges { justify-content: center; flex: none; }
 }
 .sheet.wide { max-width: 820px; gap: 10px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); max-height: 94vh; }
 .sheet.wide .chips { gap: 6px; }
@@ -526,7 +529,7 @@ function teamName(id) { return state.teams[id] ? state.teams[id].name : "Équipe
 function playerName(id) { return state.players[id] ? state.players[id].name : "Joueur supprimé"; }
 
 var LINES = ["1", "2", "3"];
-var FOULS = ["Cinglage", "Faire trébucher", "Crosse haute", "Charge", "Obstruction", "Surnombre"];
+var FOULS = ["Cinglage", "Faire trébucher", "Crosse haute", "Charge", "Obstruction", "Surnombre", "Projection"];
 var SHOT_KINDS = [{ k: "critical", label: "Critique", hint: "aurait pu être un but" }, { k: "normal", label: "Normal", hint: "cadré" }, { k: "missed", label: "Raté", hint: "non cadré" }];
 var GOALIE_SHOTS = [{ k: "critical", label: "Arrêt critique", hint: "aurait pu être un but" }, { k: "normal", label: "Arrêt normal", hint: "tir cadré" }, { k: "missed", label: "Tir adverse raté", hint: "hors cadre, hors stats du gardien" }];
 var SAVE_W = { critical: 2, normal: 1 };
@@ -906,7 +909,7 @@ function compoEditor(target, h) {
   var sid = target === "nm" ? (activeSeason() ? activeSeason().id : null) : (state.matches[target] ? state.matches[target].seasonId : null);
   var inRoster = {};
   rosterIds(sid).forEach(function (id) { inRoster[id] = true; });
-  var shown = list(state.players).filter(function (p) { return inRoster[p.id] || lineup.indexOf(p.id) >= 0; }).sort(byPosThenNum);
+  var shown = list(state.players).filter(function (p) { return inRoster[p.id] || lineup.indexOf(p.id) >= 0; }).sort(function (a, b) { return (b.pos === "G") - (a.pos === "G") || byPosThenNum(a, b); });
   if (!shown.length) return emptyState("Aucun joueur", "L'effectif de cette saison est vide.", '<a class="btn dark" href="#effectif">Ouvrir l\'effectif</a>');
   var rows = shown.map(function (p) {
     var inL = lineup.indexOf(p.id) >= 0;
@@ -998,9 +1001,9 @@ function feedHtml(m, mid, canDelete) {
   var list2 = evs(m).slice().reverse();
   if (!list2.length) return emptyState("Aucun événement", canDelete ? "Touchez un joueur pour enregistrer une action." : "Aucune action enregistrée pour ce match.");
   return '<div class="card flat list">' + list2.map(function (e) {
-    return '<div class="item"><span class="small muted num">' + hhmm(e.t) + (e.per ? " T" + e.per : "") + '</span><span class="grow">' + esc(eventText(e)) + "</span>" +
+    return '<div class="item feeditem"><span class="small muted num">' + hhmm(e.t) + (e.per ? " T" + e.per : "") + '</span><span class="grow">' + esc(eventText(e)) + '</span>' + (canDelete ? '<span class="facts">' : "") +
       (canDelete && (e.type === "goal" || e.type === "ga") ? '<button class="btn ghost" data-act="evedit" data-m="' + mid + '" data-e="' + esc(e.id) + '" aria-label="Modifier cet événement">Modifier</button>' : "") +
-      (canDelete ? '<button class="btn ghost danger" data-act="evdel" data-m="' + mid + '" data-e="' + esc(e.id) + '" aria-label="Annuler cet événement">Annuler</button>' : "") + "</div>";
+      (canDelete ? '<button class="btn ghost danger" data-act="evdel" data-m="' + mid + '" data-e="' + esc(e.id) + '" aria-label="Annuler cet événement">Annuler</button></span>' : "") + "</div>";
   }).join("") + "</div>";
 }
 
@@ -1478,6 +1481,7 @@ function tierMetrics(t) {
   };
 }
 
+function hasTier(S, p, m) { return tierHasData(S.T[p]) || (!!m && parseInt(p, 10) <= (m.period || 1)); }
 function tierHasData(t) { return t.shc + t.shn + t.shm + t.ac + t.an + t.am + t.gf + t.ga + t.pen + t.hj + t.di + t.fw + t.fl + t.op + t.od + t.oh > 0; }
 
 function fmtVal(v, kind) {
@@ -1554,7 +1558,7 @@ function foDetailHtml(m, key) {
 function liveBlocks(S, key, m) {
   var cmp = key === "2" ? "1" : key === "3" ? "2" : null;
   var cur = tierMetrics(S.T[key]), prev = null;
-  if (cmp && tierHasData(S.T[key]) && tierHasData(S.T[cmp])) prev = tierMetrics(S.T[cmp]);
+  if (cmp && hasTier(S, key, m) && hasTier(S, cmp, m)) prev = tierMetrics(S.T[cmp]);
   var pl = cmp ? "T" + cmp : "";
   var legend = cmp ? (prev ? '<div class="small muted"><span class="legend good">Vert</span> mieux qu\'au T' + cmp + ', <span class="legend bad">rouge</span> moins bien. Les valeurs sans couleur sont identiques ou ne se comparent pas.</div>' : '<div class="small muted">Comparaison avec le T' + cmp + " disponible dès que les deux tiers ont des données.</div>") : "";
   return legend + TIER_GROUPS.map(function (gr) {
@@ -1947,7 +1951,17 @@ function setCompo(t, pid, l) {
   var i = lineup.indexOf(pid);
   h.lines = Object.assign({}, h.lines || {});
   if (l === "0") { if (i >= 0) lineup.splice(i, 1); }
-  else { if (i < 0) lineup.push(pid); h.lines[pid] = l; }
+  else {
+    var p = state.players[pid], mates = lineup.filter(function (o) { return o !== pid && h.lines[o] === l && state.players[o] && state.players[o].pos !== "G"; });
+    var same = mates.filter(function (o) { return state.players[o].pos === p.pos; }).length;
+    if (p.pos !== "G") {
+      if (mates.length >= 5) { toast("Ligne " + l + " complète : 5 joueurs maximum"); render(); return; }
+      if (p.pos === "D" && same >= 2) { toast("Ligne " + l + " : 2 défenseurs maximum"); render(); return; }
+      if (p.pos === "A" && same >= 3) { toast("Ligne " + l + " : 3 attaquants maximum"); render(); return; }
+    }
+    if (i < 0) lineup.push(pid);
+    h.lines[pid] = l;
+  }
   h.lineup = lineup;
   commitCompo(t);
 }

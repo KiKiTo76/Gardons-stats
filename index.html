@@ -294,6 +294,10 @@ button.stat { font: inherit; color: inherit; background: var(--surface); border:
 .breakbar .brow { display: flex; align-items: center; gap: 10px; padding: 4px 4px 4px 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .breakbar .bprog { display: block; height: 4px; background: var(--line); }
 .breakbar .bprog i { display: block; height: 100%; width: 0; background: var(--accent); }
+.abtn.span2 { grid-column: 1 / -1; }
+.xmark { width: 15px; height: 15px; color: var(--bad); vertical-align: -2px; margin-left: 6px; }
+.ord { display: inline-block; min-width: 20px; margin-right: 6px; border-radius: 10px; background: var(--on-accent); color: var(--accent); text-align: center; font-size: 0.78rem; line-height: 20px; }
+.stickybar { position: sticky; bottom: calc(-18px - env(safe-area-inset-bottom, 0px)); background: var(--surface); padding-block: 10px calc(18px + env(safe-area-inset-bottom, 0px)); margin-top: 4px; z-index: 2; }
 .notetext { overflow-wrap: anywhere; white-space: pre-wrap; }
 .breakbar.late { border-color: var(--bad); }
 .breakbar.late .bprog i { background: var(--bad); }
@@ -339,6 +343,8 @@ function esc(s) {
     return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
   });
 }
+
+var XMARK = '<svg class="xmark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>';
 
 ICON.note = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17v3z"/><path d="M14 7l3 3"/></svg>';
 
@@ -535,7 +541,7 @@ var GOALIE_SHOTS = [{ k: "critical", label: "Arrêt critique", hint: "aurait pu 
 var SAVE_W = { critical: 2, normal: 1 };
 var SITUATIONS = [{ k: "normal", label: "Jeu normal" }, { k: "sup", label: "Supériorité" }, { k: "inf", label: "Infériorité" }];
 var PENALTIES = [{ k: "mineure", label: "Mineure", min: 2 }, { k: "double", label: "Double mineure", min: 4 }, { k: "majeure", label: "Majeure", min: 5 }, { k: "meconduite", label: "Méconduite", min: 10 }, { k: "match", label: "Match", min: 20 }];
-var EVENT_LABEL = { goal: "But", assist: "Passe", penalty: "Pénalité", offside: "Hors-jeu", icing: "Dégagement interdit", fow: "Mise au jeu gagnée", fol: "Mise au jeu perdue", oppen: "Pénalité adverse", opdi: "Dégagement interdit adverse", save: "Arrêt", ga: "But encaissé", shot: "Tir", shotag: "Tir reçu" };
+var EVENT_LABEL = { goal: "But", assist: "Passe", penalty: "Pénalité", offside: "Hors-jeu", icing: "Dégagement interdit", fow: "Mise au jeu gagnée", fol: "Mise au jeu perdue", oppen: "Pénalité adverse", opdi: "Dégagement interdit adverse", ophj: "Hors-jeu adverse", save: "Arrêt", ga: "But encaissé", shot: "Tir", shotag: "Tir reçu" };
 
 function evs(m) { return Array.isArray(m.events) ? m.events : []; }
 
@@ -984,7 +990,7 @@ function shotLabel(k) {
 }
 
 function eventText(e) {
-  var who = e.pid ? playerName(e.pid) : (e.type === "oppen" || e.type === "opdi" ? "Adversaires" : "Équipe");
+  var who = e.pid ? playerName(e.pid) : (e.type === "oppen" || e.type === "opdi" || e.type === "ophj" ? "Adversaires" : "Équipe");
   if (e.type === "shotag") return (GOALIE_SHOTS.filter(function (s) { return s.k === e.kind; })[0] || { label: "Tir reçu" }).label + " - " + who;
   var extra = e.type === "penalty" || e.type === "oppen" ? " " + (e.kind ? e.kind + ", " : "") + (e.min || 0) + " min" + (e.foul ? " (" + e.foul + ")" : "") : "";
   if (e.type === "shot" || e.type === "shotag") extra += " " + shotLabel(e.kind).toLowerCase();
@@ -1152,6 +1158,18 @@ function plButton(m, mid, p) {
   return '<button class="plbtn" data-act="pl" data-m="' + mid + '" data-p="' + p.id + '"><span class="jersey">' + esc(p.num) + '</span><span class="grow" style="text-align:left"><span class="title" style="display:block">' + esc(p.name) + '</span><span class="small muted">' + (p.pos === "G" ? "Gardien " + (m.gk && m.gk[p.id] === "B" ? "backup" : "titulaire") : POS[p.pos]) + '</span></span>' + (b.length ? '<span class="badges">' + b.join("") + "</span>" : "") + "</button>";
 }
 
+function lineMates(m, line, except) {
+  if (!line) return [];
+  return (m.lineup || []).filter(function (id) {
+    var p = state.players[id];
+    return p && p.pos !== "G" && m.lines && m.lines[id] === line && id !== except;
+  });
+}
+
+function sameSet(a, b) {
+  return a.length === b.length && a.every(function (x) { return b.indexOf(x) >= 0; });
+}
+
 function onLines(m) {
   return (m.lineup || []).filter(function (id) {
     var p = state.players[id];
@@ -1194,9 +1212,9 @@ function sheetHtml() {
   var body;
   var evBtn = function (type, label, cls) { return '<button class="abtn ' + (cls || "") + '" data-act="ev" data-m="' + sh.mid + '"' + (sh.pid ? ' data-p="' + sh.pid + '"' : "") + ' data-type="' + type + '">' + label + "</button>"; };
   var sitSel = function () {
-    return '<div class="field"><label for="sit-sel">Situation</label><select class="input" id="sit-sel" data-change="sit">' + SITUATIONS.map(function (s) {
-      return '<option value="' + s.k + '"' + ((sh.sit || "normal") === s.k ? " selected" : "") + ">" + s.label + "</option>";
-    }).join("") + "</select></div>";
+    return '<div class="field"><span class="label">Situation</span><div class="chips">' + SITUATIONS.map(function (x) {
+      return '<button class="chip" data-act="sit-set" data-v="' + x.k + '" aria-pressed="' + ((sh.sit || "normal") === x.k) + '">' + x.label + "</button>";
+    }).join("") + "</div></div>";
   };
   var perSel = function () {
     if (!sh.edit) return "";
@@ -1207,36 +1225,45 @@ function sheetHtml() {
   if (sh.step === "shot") {
     var against = p && p.pos === "G";
     body = '<div class="field"><span class="label">' + (against ? "Tir de l'adversaire" : "Tir") + '</span><div class="actions">' + (against ? GOALIE_SHOTS : SHOT_KINDS).map(function (s) {
-      return '<button class="abtn' + (s.k === "critical" ? " good" : "") + '" data-act="shot-save" data-k="' + s.k + '">' + s.label + '<span class="small muted" style="display:block;font-weight:400">' + s.hint + "</span></button>";
+      return '<button class="abtn' + (s.k === "critical" ? " good" : "") + '" data-act="shot-save" data-k="' + s.k + '">' + s.label + (s.k === "missed" ? XMARK : "") + '<span class="small muted" style="display:block;font-weight:400">' + s.hint + "</span></button>";
     }).join("") + '</div></div><div class="row"><button class="btn grow" data-act="pen-back">Retour</button></div>';
   } else if (sh.step === "opp") {
-    body = '<div class="actions"><button class="abtn" data-act="pen-open">Pénalité</button><button class="abtn bad" data-act="ga" data-m="' + sh.mid + '">But</button>' + evBtn("opdi", "Dégagement interdit") + "</div>";
+    body = '<div class="actions"><button class="abtn" data-act="pen-open">Pénalité</button><button class="abtn bad" data-act="ga" data-m="' + sh.mid + '">But</button>' + evBtn("opdi", "Dégagement interdit") + evBtn("ophj", "Hors-jeu") + "</div>";
   } else if (sh.step === "ga") {
     var gks = (m.lineup || []).filter(function (id) { return state.players[id] && state.players[id].pos === "G"; });
     var onIce = onLines(m).filter(function (id) { return state.players[id].pos !== "G"; }).map(function (id) { return Object.assign({ id: id }, state.players[id]); }).sort(byPosThenNum);
     var gkSel = gks.length > 1 ? '<div class="field"><span class="label">Gardien</span><div class="chips">' + gks.map(function (id) {
       return '<button class="chip" data-act="ga-goalie" data-v="' + id + '" aria-pressed="' + (sh.pid === id) + '">' + esc(state.players[id].num) + " " + esc(state.players[id].name) + (m.gk && m.gk[id] === "B" ? " (backup)" : "") + "</button>";
     }).join("") + "</div></div>" : "";
-    body = perSel() + sitSel() + gkSel + '<div class="field"><span class="label">But encaissé : joueurs sur la glace, hors gardien (' + sh.ice.length + '/5, facultatif)</span><div class="chips">' + (onIce.map(function (o) {
+    var gaLines = LINES.filter(function (l) { return lineMates(m, l, null).length; }).map(function (l) {
+      return '<button class="chip sm" data-act="ga-line" data-v="' + l + '" aria-pressed="' + sameSet(sh.ice, lineMates(m, l, null).slice(0, 5)) + '">Ligne ' + l + "</button>";
+    }).join("");
+    body = perSel() + sitSel() + gkSel + '<div class="field"><span class="label">But encaissé : joueurs sur la glace, hors gardien (' + sh.ice.length + '/5, facultatif)</span>' + (gaLines ? '<div class="chips">' + gaLines + "</div>" : "") + '<div class="chips">' + (onIce.map(function (o) {
       return '<button class="chip" data-act="ga-ice" data-v="' + o.id + '" aria-pressed="' + (sh.ice.indexOf(o.id) >= 0) + '">' + esc(o.num) + " " + esc(o.name) + "</button>";
     }).join("") || '<span class="small muted">Aucun joueur dans la composition</span>') + '</div></div>' +
-      '<div class="row"><button class="btn grow" data-act="sheet-close">Annuler</button><button class="btn primary grow" data-act="ga-save">' + (sh.edit ? "Enregistrer les modifications" : "Enregistrer le but encaissé") + "</button></div>";
+      '<div class="row stickybar"><button class="btn grow" data-act="sheet-close">Annuler</button><button class="btn primary grow" data-act="ga-save">' + (sh.edit ? "Enregistrer les modifications" : "Enregistrer le but encaissé") + "</button></div>";
   } else if (sh.step === "goal") {
-    var others = onLines(m).filter(function (id) { return id !== sh.pid; }).map(function (id) { return Object.assign({ id: id }, state.players[id]); }).sort(byPosThenNum);
+    var sline = m.lines && m.lines[sh.pid];
+    var rank = function (o) { var l = m.lines && m.lines[o.id]; return (o.pos === "G" ? 9000 : 0) + (l && l === sline ? 0 : l ? 100 + parseInt(l, 10) * 10 : 500) + (o.pos === "D" ? 1 : 0); };
+    var others = onLines(m).filter(function (id) { return id !== sh.pid; }).map(function (id) { return Object.assign({ id: id }, state.players[id]); }).sort(function (a, b) { return rank(a) - rank(b) || (a.num || 0) - (b.num || 0); });
     var lab = function (o) { return esc(o.num) + " " + esc(o.name); };
     var astChips = others.map(function (o) {
-      return '<button class="chip" data-act="goal-ast" data-v="' + o.id + '" aria-pressed="' + (sh.ast.indexOf(o.id) >= 0) + '">' + lab(o) + "</button>";
+      var i = sh.ast.indexOf(o.id);
+      return '<button class="chip" data-act="goal-ast" data-v="' + o.id + '" aria-pressed="' + (i >= 0) + '">' + (i >= 0 ? '<b class="ord">' + (i + 1) + "</b>" : "") + lab(o) + "</button>";
     }).join("");
     var iceChips = others.filter(function (o) { return o.pos !== "G"; }).map(function (o) {
       return '<button class="chip" data-act="goal-ice" data-v="' + o.id + '" aria-pressed="' + (sh.ice.indexOf(o.id) >= 0) + '">' + lab(o) + "</button>";
+    }).join("");
+    var lineBtns = LINES.filter(function (l) { return lineMates(m, l, sh.pid).length; }).map(function (l) {
+      return '<button class="chip sm" data-act="goal-line" data-v="' + l + '" aria-pressed="' + sameSet(sh.ice, lineMates(m, l, sh.pid).slice(0, 4)) + '">Ligne ' + l + "</button>";
     }).join("");
     var scorerIds = onLines(m).concat([sh.pid]).filter(function (id, i, a) { return a.indexOf(id) === i && state.players[id] && state.players[id].pos !== "G"; }).map(function (id) { return Object.assign({ id: id }, state.players[id]); }).sort(byPosThenNum);
     var scorerSel = sh.edit ? '<div class="field"><span class="label">Buteur</span><div class="chips">' + scorerIds.map(function (o) {
       return '<button class="chip" data-act="goal-scorer" data-v="' + o.id + '" aria-pressed="' + (sh.pid === o.id) + '">' + lab(o) + "</button>";
     }).join("") + "</div></div>" : "";
     body = perSel() + scorerSel + sitSel() + '<div class="field"><span class="label">Passes (' + sh.ast.length + "/2, facultatif)</span>" + '<div class="chips">' + (astChips || '<span class="small muted">Aucun joueur dans la composition</span>') + "</div></div>" +
-      '<div class="field"><span class="label">Autres joueurs sur la glace, hors gardien (' + sh.ice.length + "/4, facultatif)</span>" + '<div class="chips">' + (iceChips || '<span class="small muted">Aucun joueur dans la composition</span>') + "</div></div>" +
-      '<div class="row">' + (sh.edit ? '<button class="btn grow" data-act="sheet-close">Annuler</button>' : '<button class="btn grow" data-act="pen-back">Retour</button>') + '<button class="btn primary grow" data-act="goal-save">' + (sh.edit ? "Enregistrer les modifications" : "Enregistrer le but") + "</button></div>";
+      '<div class="field"><span class="label">Sur la glace avec le buteur, hors gardien (' + sh.ice.length + "/4)</span>" + (lineBtns ? '<div class="chips">' + lineBtns + "</div>" : "") + '<div class="chips">' + (iceChips || '<span class="small muted">Aucun joueur dans la composition</span>') + "</div></div>" +
+      '<div class="row stickybar">' + (sh.edit ? '<button class="btn grow" data-act="sheet-close">Annuler</button>' : '<button class="btn grow" data-act="pen-back">Retour</button>') + '<button class="btn primary grow" data-act="goal-save">' + (sh.edit ? "Enregistrer les modifications" : "Enregistrer le but") + "</button></div>";
   } else if (sh.step === "penalty") {
     body = '<div class="field"><span class="label">Pénalité</span><div class="chips">' + PENALTIES.map(function (n) {
       return '<button class="chip" data-act="pen-kind" data-v="' + n.k + '" aria-pressed="' + (sh.pen === n.k) + '">' + n.label + " - " + n.min + " min</button>";
@@ -1246,7 +1273,7 @@ function sheetHtml() {
   } else if (p.pos === "G") {
     body = '<div class="actions"><button class="abtn" data-act="shot-open">Arrêt / tir reçu</button>' + '<button class="abtn bad" data-act="ga" data-m="' + sh.mid + '" data-p="' + sh.pid + '">But encaissé</button>' + '<button class="abtn good" data-act="goal-open">But</button><button class="abtn" data-act="pen-open">Pénalité</button></div>';
   } else {
-    body = '<div class="actions">' + '<button class="abtn good" data-act="goal-open">But</button>' + '<button class="abtn" data-act="shot-open">Tir</button>' + '<button class="abtn bad" data-act="pen-open">Pénalité</button>' + evBtn("offside", "Hors-jeu") + evBtn("icing", "Dégagement interdit") + evBtn("fow", "Mise au jeu gagnée", "good") + evBtn("fol", "Mise au jeu perdue", "bad") + "</div>";
+    body = '<div class="actions">' + '<button class="abtn good" data-act="goal-open">But</button>' + '<button class="abtn" data-act="shot-open">Tir</button>' + evBtn("icing", "Dégagement interdit") + evBtn("offside", "Hors-jeu") + evBtn("fow", "Mise au jeu gagnée", "good") + evBtn("fol", "Mise au jeu perdue", "bad") + '<button class="abtn bad span2" data-act="pen-open">Pénalité</button></div>';
   }
   return '<div class="sheet-back" data-act="sheet-close"></div><div class="sheet' + (sh.step === "goal" || sh.step === "ga" ? " wide" : "") + '" role="dialog" aria-modal="true" aria-label="' + (sh.opp ? "Adversaires" : p ? "Actions pour " + esc(p.name) : "But encaissé") + '">' + head + body + "</div>";
 }
@@ -1401,7 +1428,7 @@ var PERIODS = ["1", "2", "3"];
 ui.liveTier = "all";
 
 function emptyTier() {
-  return { gs: 0, gf: 0, ga: 0, shc: 0, shn: 0, shm: 0, pim: 0, pen: 0, hj: 0, di: 0, fw: 0, fl: 0, op: 0, opm: 0, od: 0, ac: 0, an: 0, am: 0, svc: 0, svn: 0, sit: { normal: { f: 0, a: 0 }, sup: { f: 0, a: 0 }, inf: { f: 0, a: 0 } } };
+  return { gs: 0, gf: 0, ga: 0, shc: 0, shn: 0, shm: 0, pim: 0, pen: 0, hj: 0, di: 0, fw: 0, fl: 0, op: 0, opm: 0, od: 0, oh: 0, ac: 0, an: 0, am: 0, svc: 0, svn: 0, sit: { normal: { f: 0, a: 0 }, sup: { f: 0, a: 0 }, inf: { f: 0, a: 0 } } };
 }
 
 function dangerOf(c, n, mi) { return c * SHOT_W.critical + n * SHOT_W.normal + mi * SHOT_W.missed; }
@@ -1432,6 +1459,7 @@ function liveStats(m) {
     else if (e.type === "fol") each(function (t) { t.fl++; });
     else if (e.type === "oppen") each(function (t) { t.op++; t.opm += e.min || 0; });
     else if (e.type === "opdi") each(function (t) { t.od++; });
+    else if (e.type === "ophj") each(function (t) { t.oh++; });
   });
   return { T: T };
 }
@@ -1442,7 +1470,7 @@ function sumLive(list) {
   list.forEach(function (S) {
     Object.keys(R.T).forEach(function (k) {
       var a = R.T[k], b = S.T[k];
-      ["gs", "gf", "ga", "shc", "shn", "shm", "pim", "pen", "hj", "di", "fw", "fl", "op", "opm", "od", "ac", "an", "am", "svc", "svn"].forEach(function (f) { a[f] += b[f]; });
+      ["gs", "gf", "ga", "shc", "shn", "shm", "pim", "pen", "hj", "di", "fw", "fl", "op", "opm", "od", "oh", "ac", "an", "am", "svc", "svn"].forEach(function (f) { a[f] += b[f]; });
       ["normal", "sup", "inf"].forEach(function (x) { a.sit[x].f += b.sit[x].f; a.sit[x].a += b.sit[x].a; });
     });
   });
@@ -1456,11 +1484,11 @@ function tierMetrics(t) {
     gf: t.gf, ga: t.ga, diff: t.gf - t.ga,
     agT: agT, ac: t.ac, an: t.an, am: t.am, agD: dangerOf(t.ac, t.an, t.am),
     svc: t.svc, svn: t.svn, svw: t.svc * SAVE_W.critical + t.svn * SAVE_W.normal, svp: sv + t.ga ? sv / (sv + t.ga) * 100 : null,
-    pen: t.pen, pim: t.pim, hj: t.hj, di: t.di, fw: t.fw, fl: t.fl, op: t.op, opm: t.opm, od: t.od, fp: t.fw + t.fl ? t.fw / (t.fw + t.fl) * 100 : null
+    pen: t.pen, pim: t.pim, hj: t.hj, di: t.di, fw: t.fw, fl: t.fl, op: t.op, opm: t.opm, od: t.od, oh: t.oh, fp: t.fw + t.fl ? t.fw / (t.fw + t.fl) * 100 : null
   };
 }
 
-function tierHasData(t) { return t.shc + t.shn + t.shm + t.ac + t.an + t.am + t.gf + t.ga + t.pen + t.hj + t.di + t.fw + t.fl + t.op + t.od > 0; }
+function tierHasData(t) { return t.shc + t.shn + t.shm + t.ac + t.an + t.am + t.gf + t.ga + t.pen + t.hj + t.di + t.fw + t.fl + t.op + t.od + t.oh > 0; }
 
 function fmtVal(v, kind) {
   if (v == null) return "-";
@@ -1500,7 +1528,7 @@ var TIER_GROUPS = [
   { title: "Gardien", specs: [{ l: "Arrêts crit.", k: "svc" }, { l: "Arrêts norm.", k: "svn" }, { l: "Arrêts pond.", k: "svw", kind: "dec" }, { l: "Buts encaissés", k: "ga", dir: -1 }, { l: "% arrêts", k: "svp", dir: 1, kind: "pct" }] },
   { title: "Discipline", specs: [{ l: "Pénalités", k: "pen", dir: -1 }, { l: "Minutes", k: "pim", dir: -1 }, { l: "Hors-jeu", k: "hj", dir: -1 }, { l: "Dég. interdits", k: "di", dir: -1 }] },
   { title: "Mises au jeu", specs: [{ l: "Gagnées", k: "fw", dir: 1, act: "fodetail", v: "fw" }, { l: "Perdues", k: "fl", dir: -1, act: "fodetail", v: "fl" }, { l: "% gagnées", k: "fp", dir: 1, kind: "pct" }] },
-  { title: "Adversaires", specs: [{ l: "Pénalités adverses", k: "op", dir: 1 }, { l: "Minutes adverses", k: "opm", dir: 1 }, { l: "Dég. interdits adv.", k: "od", dir: 1 }] }
+  { title: "Adversaires", specs: [{ l: "Pénalités adverses", k: "op", dir: 1 }, { l: "Minutes adverses", k: "opm", dir: 1 }, { l: "Dég. interdits adv.", k: "od", dir: 1 }, { l: "Hors-jeu adv.", k: "oh", dir: 1 }] }
 ];
 
 function dangerDuel(cur, m) {
@@ -2154,7 +2182,24 @@ var actions = {
   },
   "sheet-close": function () { ui.sheet = null; render(); },
   ev: function (d) { ui.sheet = null; addEvent(d.m, d.p, d.type); },
-  "goal-open": function () { ui.sheet.step = "goal"; ui.sheet.ast = []; ui.sheet.ice = []; render(); },
+  "goal-open": function () {
+    var sh = ui.sheet, m = state.matches[sh.mid];
+    sh.step = "goal"; sh.ast = [];
+    sh.ice = m ? lineMates(m, m.lines && m.lines[sh.pid], sh.pid).slice(0, 4) : [];
+    render();
+  },
+  "goal-line": function (d) {
+    var sh = ui.sheet, m = state.matches[sh.mid]; if (!sh || !m) return;
+    sh.ice = lineMates(m, d.v, sh.pid).slice(0, 4);
+    sh.ast = sh.ast.filter(function (x) { return sh.ice.indexOf(x) >= 0 || (state.players[x] && state.players[x].pos === "G"); });
+    render();
+  },
+  "ga-line": function (d) {
+    var sh = ui.sheet, m = state.matches[sh.mid]; if (!sh || !m) return;
+    sh.ice = lineMates(m, d.v, null).slice(0, 5);
+    render();
+  },
+  "sit-set": function (d) { ui.sheet.sit = d.v; render(); },
   "goal-ast": function (d) {
     var sh = ui.sheet, i = sh.ast.indexOf(d.v);
     if (i >= 0) sh.ast.splice(i, 1);

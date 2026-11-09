@@ -287,6 +287,9 @@ th[aria-sort="ascending"] button::after { border-bottom: 5px solid currentColor;
 .bilan td.worse { background: color-mix(in srgb, var(--bad) 18%, var(--surface)); color: var(--bad); font-weight: 700; }
 .bilan th, .bilan td:not(.name) { text-align: center; }
 .bilan tr.grp th { text-align: left; color: var(--accent); font-style: italic; letter-spacing: 0.12em; text-transform: uppercase; font-size: 0.75rem; background: var(--bg); }
+button.stat { font: inherit; color: inherit; background: var(--surface); border: 0; border-right: 1px solid var(--line); cursor: pointer; }
+.stat.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
+.fodetail .item b { font-family: var(--display); font-size: 1.3rem; }
 </style>
 </head>
 <body>
@@ -298,6 +301,7 @@ th[aria-sort="ascending"] button::after { border-bottom: 5px solid currentColor;
 <div id="syncbar" class="syncbar" hidden role="status"></div>
 <div id="toast" class="toast" hidden role="status"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script defer src="export-match.js"></script>
 <script>
 var state = { seasons: {}, players: {}, teams: {}, matches: {}, loaded: 0, admin: false, db: null, failed: false, slow: false };
 var TEAM_NAME = "Gardons";
@@ -464,7 +468,7 @@ var GOALIE_SHOTS = [{ k: "critical", label: "Arrêt critique", hint: "aurait pu 
 var SAVE_W = { critical: 2, normal: 1 };
 var SITUATIONS = [{ k: "normal", label: "Jeu normal" }, { k: "sup", label: "Supériorité" }, { k: "inf", label: "Infériorité" }];
 var PENALTIES = [{ k: "mineure", label: "Mineure", min: 2 }, { k: "double", label: "Double mineure", min: 4 }, { k: "majeure", label: "Majeure", min: 5 }, { k: "meconduite", label: "Méconduite", min: 10 }, { k: "match", label: "Match", min: 20 }];
-var EVENT_LABEL = { goal: "But", assist: "Passe", penalty: "Pénalité", offside: "Hors-jeu", icing: "Dégagement interdit", fow: "Mise au jeu gagnée", fol: "Mise au jeu perdue", save: "Arrêt", ga: "But encaissé", shot: "Tir", shotag: "Tir reçu" };
+var EVENT_LABEL = { goal: "But", assist: "Passe", penalty: "Pénalité", offside: "Hors-jeu", icing: "Dégagement interdit", fow: "Mise au jeu gagnée", fol: "Mise au jeu perdue", oppen: "Pénalité adverse", opdi: "Dégagement interdit adverse", save: "Arrêt", ga: "But encaissé", shot: "Tir", shotag: "Tir reçu" };
 
 function evs(m) { return Array.isArray(m.events) ? m.events : []; }
 
@@ -890,9 +894,9 @@ function shotLabel(k) {
 }
 
 function eventText(e) {
-  var who = e.pid ? playerName(e.pid) : "Équipe";
+  var who = e.pid ? playerName(e.pid) : (e.type === "oppen" || e.type === "opdi" ? "Adversaires" : "Équipe");
   if (e.type === "shotag") return (GOALIE_SHOTS.filter(function (s) { return s.k === e.kind; })[0] || { label: "Tir reçu" }).label + " - " + who;
-  var extra = e.type === "penalty" ? " " + (e.kind ? e.kind + ", " : "") + (e.min || 0) + " min" + (e.foul ? " (" + e.foul + ")" : "") : "";
+  var extra = e.type === "penalty" || e.type === "oppen" ? " " + (e.kind ? e.kind + ", " : "") + (e.min || 0) + " min" + (e.foul ? " (" + e.foul + ")" : "") : "";
   if (e.type === "shot" || e.type === "shotag") extra += " " + shotLabel(e.kind).toLowerCase();
   if ((e.type === "goal" || e.type === "ga") && (e.sit === "sup" || e.sit === "inf")) extra += " (" + (e.sit === "sup" ? "supériorité" : "infériorité") + ")";
   if (e.type === "ga" && Array.isArray(e.ice) && e.ice.length) extra += " [glace : " + e.ice.map(function (id) { return state.players[id] ? "n" + state.players[id].num : "?"; }).join(", ") + "]";
@@ -908,6 +912,7 @@ function feedHtml(m, mid, canDelete) {
   if (!list2.length) return emptyState("Aucun événement", canDelete ? "Touchez un joueur pour enregistrer une action." : "Aucune action enregistrée pour ce match.");
   return '<div class="card flat list">' + list2.map(function (e) {
     return '<div class="item"><span class="small muted num">' + hhmm(e.t) + (e.per ? " T" + e.per : "") + '</span><span class="grow">' + esc(eventText(e)) + "</span>" +
+      (canDelete && (e.type === "goal" || e.type === "ga") ? '<button class="btn ghost" data-act="evedit" data-m="' + mid + '" data-e="' + esc(e.id) + '" aria-label="Modifier cet événement">Modifier</button>' : "") +
       (canDelete ? '<button class="btn ghost danger" data-act="evdel" data-m="' + mid + '" data-e="' + esc(e.id) + '" aria-label="Annuler cet événement">Annuler</button>' : "") + "</div>";
   }).join("") + "</div>";
 }
@@ -1084,7 +1089,7 @@ function viewSheetPage(id) {
   if (!sections) sections = emptyState("Aucun joueur convoqué", "Composez d'abord les lignes dans la page du match.", '<a class="btn dark" href="#match-' + id + '">Composer les lignes</a>');
   var locked = liveLockId() === id;
   return '<div class="stack live">' + (locked ? "" : backBar("#match-" + id, "Fiche du match")) + boardHtml(m) +
-    '<div class="row" style="flex-wrap:nowrap">' + periodTag(m) + '<a class="btn grow" href="#live-' + id + '">' + (m.played ? "Résumé du match" : "Stats live") + '</a><button class="btn grow" data-act="ga" data-m="' + id + '">But contre</button>' +
+    '<div class="row" style="flex-wrap:nowrap">' + periodTag(m) + '<a class="btn grow" href="#live-' + id + '">' + (m.played ? "Résumé du match" : "Stats live") + '</a><button class="btn grow" data-act="opp" data-m="' + id + '">Adversaires</button>' +
     endButton(m, id) + "</div>" +
     sections + "<h2>Fil du match</h2>" + feedHtml(m, id, true) +
     (locked && !evs(m).length ? '<button class="btn ghost block" data-act="unstart" data-m="' + id + '">Annuler le démarrage</button>' : "") + "</div>";
@@ -1094,30 +1099,38 @@ function sheetHtml() {
   var sh = ui.sheet;
   if (!sh) return "";
   var m = state.matches[sh.mid], p = state.players[sh.pid];
-  if (!m || (!p && sh.step !== "ga")) return "";
-  var head = '<div class="row between"><div class="row" style="flex-wrap:nowrap">' + (p ? '<span class="jersey">' + esc(p.num) + "</span><h3>" + esc(p.name) + "</h3>" : "<h3>But encaissé</h3>") + '</div><button class="btn ghost" data-act="sheet-close">Fermer</button></div>';
+  if (!m || (!p && sh.step !== "ga" && !sh.opp)) return "";
+  var head = '<div class="row between"><div class="row" style="flex-wrap:nowrap">' + (sh.edit ? "<h3>" + (sh.step === "goal" ? "Modifier le but" : "Modifier le but encaissé") + "</h3>" : sh.opp ? "<h3>Adversaires</h3>" : p ? '<span class="jersey">' + esc(p.num) + "</span><h3>" + esc(p.name) + "</h3>" : "<h3>But encaissé</h3>") + '</div><button class="btn ghost" data-act="sheet-close">Fermer</button></div>';
   var body;
-  var evBtn = function (type, label, cls) { return '<button class="abtn ' + (cls || "") + '" data-act="ev" data-m="' + sh.mid + '" data-p="' + sh.pid + '" data-type="' + type + '">' + label + "</button>"; };
+  var evBtn = function (type, label, cls) { return '<button class="abtn ' + (cls || "") + '" data-act="ev" data-m="' + sh.mid + '"' + (sh.pid ? ' data-p="' + sh.pid + '"' : "") + ' data-type="' + type + '">' + label + "</button>"; };
   var sitSel = function () {
     return '<div class="field"><label for="sit-sel">Situation</label><select class="input" id="sit-sel" data-change="sit">' + SITUATIONS.map(function (s) {
       return '<option value="' + s.k + '"' + ((sh.sit || "normal") === s.k ? " selected" : "") + ">" + s.label + "</option>";
     }).join("") + "</select></div>";
+  };
+  var perSel = function () {
+    if (!sh.edit) return "";
+    return '<div class="field"><span class="label">Tier</span><div class="chips">' + PERIODS.map(function (x) {
+      return '<button class="chip" data-act="edit-per" data-v="' + x + '" aria-pressed="' + (String(sh.per) === String(x)) + '">Tier ' + x + "</button>";
+    }).join("") + "</div></div>";
   };
   if (sh.step === "shot") {
     var against = p && p.pos === "G";
     body = '<div class="field"><span class="label">' + (against ? "Tir de l'adversaire" : "Tir") + '</span><div class="actions">' + (against ? GOALIE_SHOTS : SHOT_KINDS).map(function (s) {
       return '<button class="abtn' + (s.k === "critical" ? " good" : "") + '" data-act="shot-save" data-k="' + s.k + '">' + s.label + '<span class="small muted" style="display:block;font-weight:400">' + s.hint + "</span></button>";
     }).join("") + '</div></div><div class="row"><button class="btn grow" data-act="pen-back">Retour</button></div>';
+  } else if (sh.step === "opp") {
+    body = '<div class="actions"><button class="abtn" data-act="pen-open">Pénalité</button><button class="abtn bad" data-act="ga" data-m="' + sh.mid + '">But</button>' + evBtn("opdi", "Dégagement interdit") + "</div>";
   } else if (sh.step === "ga") {
     var gks = (m.lineup || []).filter(function (id) { return state.players[id] && state.players[id].pos === "G"; });
     var onIce = onLines(m).filter(function (id) { return state.players[id].pos !== "G"; }).map(function (id) { return Object.assign({ id: id }, state.players[id]); }).sort(byPosThenNum);
     var gkSel = gks.length > 1 ? '<div class="field"><span class="label">Gardien</span><div class="chips">' + gks.map(function (id) {
       return '<button class="chip" data-act="ga-goalie" data-v="' + id + '" aria-pressed="' + (sh.pid === id) + '">' + esc(state.players[id].num) + " " + esc(state.players[id].name) + (m.gk && m.gk[id] === "B" ? " (backup)" : "") + "</button>";
     }).join("") + "</div></div>" : "";
-    body = sitSel() + gkSel + '<div class="field"><span class="label">But encaissé : joueurs sur la glace, hors gardien (' + sh.ice.length + '/5, facultatif)</span><div class="chips">' + (onIce.map(function (o) {
+    body = perSel() + sitSel() + gkSel + '<div class="field"><span class="label">But encaissé : joueurs sur la glace, hors gardien (' + sh.ice.length + '/5, facultatif)</span><div class="chips">' + (onIce.map(function (o) {
       return '<button class="chip" data-act="ga-ice" data-v="' + o.id + '" aria-pressed="' + (sh.ice.indexOf(o.id) >= 0) + '">' + esc(o.num) + " " + esc(o.name) + "</button>";
     }).join("") || '<span class="small muted">Aucun joueur dans la composition</span>') + '</div></div>' +
-      '<div class="row"><button class="btn grow" data-act="sheet-close">Annuler</button><button class="btn primary grow" data-act="ga-save">Enregistrer le but encaissé</button></div>';
+      '<div class="row"><button class="btn grow" data-act="sheet-close">Annuler</button><button class="btn primary grow" data-act="ga-save">' + (sh.edit ? "Enregistrer les modifications" : "Enregistrer le but encaissé") + "</button></div>";
   } else if (sh.step === "goal") {
     var others = onLines(m).filter(function (id) { return id !== sh.pid; }).map(function (id) { return Object.assign({ id: id }, state.players[id]); }).sort(byPosThenNum);
     var lab = function (o) { return esc(o.num) + " " + esc(o.name); };
@@ -1127,9 +1140,13 @@ function sheetHtml() {
     var iceChips = others.filter(function (o) { return o.pos !== "G"; }).map(function (o) {
       return '<button class="chip" data-act="goal-ice" data-v="' + o.id + '" aria-pressed="' + (sh.ice.indexOf(o.id) >= 0) + '">' + lab(o) + "</button>";
     }).join("");
-    body = sitSel() + '<div class="field"><span class="label">Passes (' + sh.ast.length + "/2, facultatif)</span>" + '<div class="chips">' + (astChips || '<span class="small muted">Aucun joueur dans la composition</span>') + "</div></div>" +
+    var scorerIds = onLines(m).concat([sh.pid]).filter(function (id, i, a) { return a.indexOf(id) === i && state.players[id] && state.players[id].pos !== "G"; }).map(function (id) { return Object.assign({ id: id }, state.players[id]); }).sort(byPosThenNum);
+    var scorerSel = sh.edit ? '<div class="field"><span class="label">Buteur</span><div class="chips">' + scorerIds.map(function (o) {
+      return '<button class="chip" data-act="goal-scorer" data-v="' + o.id + '" aria-pressed="' + (sh.pid === o.id) + '">' + lab(o) + "</button>";
+    }).join("") + "</div></div>" : "";
+    body = perSel() + scorerSel + sitSel() + '<div class="field"><span class="label">Passes (' + sh.ast.length + "/2, facultatif)</span>" + '<div class="chips">' + (astChips || '<span class="small muted">Aucun joueur dans la composition</span>') + "</div></div>" +
       '<div class="field"><span class="label">Autres joueurs sur la glace, hors gardien (' + sh.ice.length + "/4, facultatif)</span>" + '<div class="chips">' + (iceChips || '<span class="small muted">Aucun joueur dans la composition</span>') + "</div></div>" +
-      '<div class="row"><button class="btn grow" data-act="pen-back">Retour</button><button class="btn primary grow" data-act="goal-save">Enregistrer le but</button></div>';
+      '<div class="row">' + (sh.edit ? '<button class="btn grow" data-act="sheet-close">Annuler</button>' : '<button class="btn grow" data-act="pen-back">Retour</button>') + '<button class="btn primary grow" data-act="goal-save">' + (sh.edit ? "Enregistrer les modifications" : "Enregistrer le but") + "</button></div>";
   } else if (sh.step === "penalty") {
     body = '<div class="field"><span class="label">Pénalité</span><div class="chips">' + PENALTIES.map(function (n) {
       return '<button class="chip" data-act="pen-kind" data-v="' + n.k + '" aria-pressed="' + (sh.pen === n.k) + '">' + n.label + " - " + n.min + " min</button>";
@@ -1141,7 +1158,7 @@ function sheetHtml() {
   } else {
     body = '<div class="actions">' + '<button class="abtn good" data-act="goal-open">But</button>' + '<button class="abtn" data-act="shot-open">Tir</button>' + '<button class="abtn bad" data-act="pen-open">Pénalité</button>' + evBtn("offside", "Hors-jeu") + evBtn("icing", "Dégagement interdit") + evBtn("fow", "Mise au jeu gagnée", "good") + evBtn("fol", "Mise au jeu perdue", "bad") + "</div>";
   }
-  return '<div class="sheet-back" data-act="sheet-close"></div><div class="sheet' + (sh.step === "goal" || sh.step === "ga" ? " wide" : "") + '" role="dialog" aria-modal="true" aria-label="' + (p ? "Actions pour " + esc(p.name) : "But encaissé") + '">' + head + body + "</div>";
+  return '<div class="sheet-back" data-act="sheet-close"></div><div class="sheet' + (sh.step === "goal" || sh.step === "ga" ? " wide" : "") + '" role="dialog" aria-modal="true" aria-label="' + (sh.opp ? "Adversaires" : p ? "Actions pour " + esc(p.name) : "But encaissé") + '">' + head + body + "</div>";
 }
 
 ui.edit = null;
@@ -1294,7 +1311,7 @@ var PERIODS = ["1", "2", "3"];
 ui.liveTier = "all";
 
 function emptyTier() {
-  return { gs: 0, gf: 0, ga: 0, shc: 0, shn: 0, shm: 0, pim: 0, pen: 0, hj: 0, di: 0, fw: 0, fl: 0, ac: 0, an: 0, am: 0, svc: 0, svn: 0, sit: { normal: { f: 0, a: 0 }, sup: { f: 0, a: 0 }, inf: { f: 0, a: 0 } } };
+  return { gs: 0, gf: 0, ga: 0, shc: 0, shn: 0, shm: 0, pim: 0, pen: 0, hj: 0, di: 0, fw: 0, fl: 0, op: 0, opm: 0, od: 0, ac: 0, an: 0, am: 0, svc: 0, svn: 0, sit: { normal: { f: 0, a: 0 }, sup: { f: 0, a: 0 }, inf: { f: 0, a: 0 } } };
 }
 
 function dangerOf(c, n, mi) { return c * SHOT_W.critical + n * SHOT_W.normal + mi * SHOT_W.missed; }
@@ -1323,6 +1340,8 @@ function liveStats(m) {
     else if (e.type === "icing") each(function (t) { t.di++; });
     else if (e.type === "fow") each(function (t) { t.fw++; });
     else if (e.type === "fol") each(function (t) { t.fl++; });
+    else if (e.type === "oppen") each(function (t) { t.op++; t.opm += e.min || 0; });
+    else if (e.type === "opdi") each(function (t) { t.od++; });
   });
   return { T: T };
 }
@@ -1333,7 +1352,7 @@ function sumLive(list) {
   list.forEach(function (S) {
     Object.keys(R.T).forEach(function (k) {
       var a = R.T[k], b = S.T[k];
-      ["gs", "gf", "ga", "shc", "shn", "shm", "pim", "pen", "hj", "di", "fw", "fl", "ac", "an", "am", "svc", "svn"].forEach(function (f) { a[f] += b[f]; });
+      ["gs", "gf", "ga", "shc", "shn", "shm", "pim", "pen", "hj", "di", "fw", "fl", "op", "opm", "od", "ac", "an", "am", "svc", "svn"].forEach(function (f) { a[f] += b[f]; });
       ["normal", "sup", "inf"].forEach(function (x) { a.sit[x].f += b.sit[x].f; a.sit[x].a += b.sit[x].a; });
     });
   });
@@ -1347,11 +1366,11 @@ function tierMetrics(t) {
     gf: t.gf, ga: t.ga, diff: t.gf - t.ga,
     agT: agT, ac: t.ac, an: t.an, am: t.am, agD: dangerOf(t.ac, t.an, t.am),
     svc: t.svc, svn: t.svn, svw: t.svc * SAVE_W.critical + t.svn * SAVE_W.normal, svp: sv + t.ga ? sv / (sv + t.ga) * 100 : null,
-    pen: t.pen, pim: t.pim, hj: t.hj, di: t.di, fw: t.fw, fl: t.fl, fp: t.fw + t.fl ? t.fw / (t.fw + t.fl) * 100 : null
+    pen: t.pen, pim: t.pim, hj: t.hj, di: t.di, fw: t.fw, fl: t.fl, op: t.op, opm: t.opm, od: t.od, fp: t.fw + t.fl ? t.fw / (t.fw + t.fl) * 100 : null
   };
 }
 
-function tierHasData(t) { return t.shc + t.shn + t.shm + t.ac + t.an + t.am + t.gf + t.ga + t.pen + t.hj + t.di + t.fw + t.fl > 0; }
+function tierHasData(t) { return t.shc + t.shn + t.shm + t.ac + t.an + t.am + t.gf + t.ga + t.pen + t.hj + t.di + t.fw + t.fl + t.op + t.od > 0; }
 
 function fmtVal(v, kind) {
   if (v == null) return "-";
@@ -1379,6 +1398,7 @@ function statGrid(specs, cur, prev, prevLabel) {
         delta = "<small>" + fmtDelta(d, sp.kind) + " vs " + prevLabel + "</small>";
       }
     }
+    if (sp.act) return '<button type="button" class="stat' + cls + (ui.foDetail === sp.v ? " sel" : "") + '" data-act="' + sp.act + '" data-v="' + sp.v + '" aria-expanded="' + (ui.foDetail === sp.v) + '"><b>' + fmtVal(v, sp.kind) + "</b><span>" + sp.l + "</span>" + delta + "</button>";
     return '<div class="stat' + cls + '"><b>' + fmtVal(v, sp.kind) + "</b><span>" + sp.l + "</span>" + delta + "</div>";
   }).join("") + "</div>";
 }
@@ -1389,7 +1409,8 @@ var TIER_GROUPS = [
   { title: "Score", specs: [{ l: "Buts pour", k: "gf", dir: 1 }, { l: "Buts contre", k: "ga", dir: -1 }, { l: "+/-", k: "diff", dir: 1, kind: "diff" }] },
   { title: "Gardien", specs: [{ l: "Arrêts crit.", k: "svc" }, { l: "Arrêts norm.", k: "svn" }, { l: "Arrêts pond.", k: "svw", kind: "dec" }, { l: "Buts encaissés", k: "ga", dir: -1 }, { l: "% arrêts", k: "svp", dir: 1, kind: "pct" }] },
   { title: "Discipline", specs: [{ l: "Pénalités", k: "pen", dir: -1 }, { l: "Minutes", k: "pim", dir: -1 }, { l: "Hors-jeu", k: "hj", dir: -1 }, { l: "Dég. interdits", k: "di", dir: -1 }] },
-  { title: "Mises au jeu", specs: [{ l: "Gagnées", k: "fw", dir: 1 }, { l: "Perdues", k: "fl", dir: -1 }, { l: "% gagnées", k: "fp", dir: 1, kind: "pct" }] }
+  { title: "Mises au jeu", specs: [{ l: "Gagnées", k: "fw", dir: 1, act: "fodetail", v: "fw" }, { l: "Perdues", k: "fl", dir: -1, act: "fodetail", v: "fl" }, { l: "% gagnées", k: "fp", dir: 1, kind: "pct" }] },
+  { title: "Adversaires", specs: [{ l: "Pénalités adverses", k: "op", dir: 1 }, { l: "Minutes adverses", k: "opm", dir: 1 }, { l: "Dég. interdits adv.", k: "od", dir: 1 }] }
 ];
 
 function dangerDuel(cur, m) {
@@ -1401,6 +1422,27 @@ function dangerDuel(cur, m) {
     '<div class="small muted">Danger : qualité des tirs (critique 2, normal 1,5, raté 1). La barre orange désigne l\'équipe la plus dangereuse.</div>';
 }
 
+function foDetailHtml(m, key) {
+  var kind = ui.foDetail;
+  if (kind !== "fw" && kind !== "fl") return '<div class="small muted">Touchez Gagnées ou Perdues pour le détail par joueur.</div>';
+  var per = key === "all" ? null : key, cnt = {};
+  evs(m).forEach(function (e) {
+    if ((e.type !== "fow" && e.type !== "fol") || !e.pid) return;
+    if (per && String(e.per) !== String(per)) return;
+    var c = cnt[e.pid] || (cnt[e.pid] = { w: 0, l: 0 });
+    if (e.type === "fow") c.w++; else c.l++;
+  });
+  var rows = Object.keys(cnt).filter(function (pid) { return cnt[pid][kind === "fw" ? "w" : "l"] > 0; }).map(function (pid) {
+    return { pid: pid, n: cnt[pid][kind === "fw" ? "w" : "l"], tot: cnt[pid].w + cnt[pid].l, num: state.players[pid] ? state.players[pid].num : 0 };
+  }).sort(function (a, b) { return b.n - a.n || a.num - b.num; });
+  var title = (kind === "fw" ? "Mises au jeu gagnées" : "Mises au jeu perdues") + (per ? " - T" + per : " - cumul");
+  var body = rows.length ? rows.map(function (r) {
+    var p = state.players[r.pid];
+    return '<div class="item"><span class="jersey">' + esc(p ? p.num : "?") + '</span><div class="grow"><div class="title">' + esc(playerName(r.pid)) + '</div><div class="small muted">' + r.n + " sur " + r.tot + " (" + Math.round(r.n / r.tot * 100) + " %)</div></div><b>" + r.n + "</b></div>";
+  }).join("") : '<div class="item"><span class="grow muted">Aucune mise au jeu ' + (kind === "fw" ? "gagnée" : "perdue") + " sur cette période.</span></div>";
+  return '<div class="card flat list fodetail"><div class="item"><b class="grow">' + title + '</b><button class="btn ghost" data-act="fodetail" data-v="' + kind + '">Fermer</button></div>' + body + "</div>";
+}
+
 function liveBlocks(S, key, m) {
   var cmp = key === "2" ? "1" : key === "3" ? "2" : null;
   var cur = tierMetrics(S.T[key]), prev = null;
@@ -1408,7 +1450,7 @@ function liveBlocks(S, key, m) {
   var pl = cmp ? "T" + cmp : "";
   var legend = cmp ? (prev ? '<div class="small muted"><span class="legend good">Vert</span> mieux qu\'au T' + cmp + ', <span class="legend bad">rouge</span> moins bien. Les valeurs sans couleur sont identiques ou ne se comparent pas.</div>' : '<div class="small muted">Comparaison avec le T' + cmp + " disponible dès que les deux tiers ont des données.</div>") : "";
   return legend + TIER_GROUPS.map(function (gr) {
-    return "<h2>" + gr.title + (gr.title === "Attaque" && key !== "all" ? " du tier " + key : "") + "</h2>" + statGrid(gr.specs, cur, prev, pl) + (gr.title === "Attaque adverse" ? dangerDuel(cur, m) : "");
+    return "<h2>" + gr.title + (gr.title === "Attaque" && key !== "all" ? " du tier " + key : "") + "</h2>" + statGrid(gr.specs, cur, prev, pl) + (gr.title === "Attaque adverse" ? dangerDuel(cur, m) : "") + (gr.title === "Mises au jeu" ? foDetailHtml(m, key) : "");
   }).join("") +
     "<h2>Situation</h2>" +
     '<div class="card flat tablewrap"><table><thead><tr><th>Situation</th><th>' + esc(TEAM_NAME) + '</th><th>' + esc(m ? teamName(m.opponentId) : "Adversaires") + '</th></tr></thead><tbody>' +
@@ -1468,7 +1510,7 @@ function viewLive(id) {
   if (ui.liveFor !== id) { ui.liveFor = id; ui.liveTier = m.played ? "all" : String(Math.min(m.period || 1, 3)); }
   var key = ui.liveTier;
   var back = state.admin ? backBar("#feuille-" + id, m.played ? "Feuille de match" : "Match live") : backBar("#match-" + id, "Fiche du match");
-  var out = '<div class="stack">' + back + "<h1>" + (m.played ? "Résumé du match" : "Stats live") + "</h1>" + boardHtml(m) + periodPill(m) + (m.played ? awardsHtml(m) + bilanHtml(S) : "") + tierChips("livetier", key) + liveBlocks(S, key, m) + (key === "all" ? goalsRecap(m) : "");
+  var out = '<div class="stack">' + back + "<h1>" + (m.played ? "Résumé du match" : "Stats live") + "</h1>" + boardHtml(m) + periodPill(m) + '<div class="row"><button class="btn" data-act="xlsx" data-m="' + id + '">Exporter en Excel</button></div>' + (m.played ? awardsHtml(m) + bilanHtml(S) : "") + tierChips("livetier", key) + liveBlocks(S, key, m) + (key === "all" ? goalsRecap(m) : "");
   var per = key === "all" ? null : key;
   var base = matchRows(m, per).filter(function (r) {
     return (m.lineup || []).indexOf(r.id) >= 0 && (r.isG ? r.active : ((m.lines && m.lines[r.id]) || r.active));
@@ -1739,6 +1781,15 @@ function val(id) { var e = document.getElementById(id); return e ? e.value.trim(
 
 function go(hash) { if (location.hash === "#" + hash) render(); else location.hash = hash; }
 
+function updateEvent(mid, eid, patch) {
+  var m = state.matches[mid];
+  if (!m) return;
+  m.events = evs(m).map(function (e) { return e.id === eid ? Object.assign({}, e, patch) : e; });
+  write("matches", mid, { events: m.events.slice() }, "update");
+  toast("Événement modifié");
+  render();
+}
+
 function addEvent(mid, pid, type, extra) {
   var m = state.matches[mid];
   if (!m) return;
@@ -1834,6 +1885,92 @@ function setLeader(t, key, pid) {
 }
 
 
+function matchExportData(id) {
+  var src = state.matches[id];
+  if (!src) return null;
+  var m = Object.assign({ id: id }, src);
+  var S = liveStats(m);
+  var inLineup = function (r) { return (m.lineup || []).indexOf(r.id) >= 0 && (r.isG ? r.active : ((m.lines && m.lines[r.id]) || r.active)); };
+  var rows = matchRows(m).filter(inLineup).sort(function (a, b) { return a.order - b.order; });
+  var fo = {};
+  evs(m).forEach(function (e) {
+    if ((e.type !== "fow" && e.type !== "fol") || !e.pid) return;
+    var per = String(e.per || 1);
+    var c = fo[e.pid] || (fo[e.pid] = { 1: { w: 0, l: 0 }, 2: { w: 0, l: 0 }, 3: { w: 0, l: 0 } });
+    if (!c[per]) c[per] = { w: 0, l: 0 };
+    if (e.type === "fow") c[per].w++; else c[per].l++;
+  });
+  var f = 0, a = 0;
+  var who = function (pid) { var p = state.players[pid]; return p ? p.num + " " + p.name : "?"; };
+  var goals = [];
+  evs(m).forEach(function (e) {
+    if (e.type !== "goal" && e.type !== "ga") return;
+    if (e.type === "goal") f++; else a++;
+    goals.push({ per: e.per || 1, time: hhmm(e.t), type: e.type === "goal" ? "But" : "But encaissé", who: e.pid ? who(e.pid) : "", ast: (e.ast || []).map(who).join(", "), ice: (e.ice || []).map(who).join(", "), sit: e.sit === "sup" ? "Supériorité" : e.sit === "inf" ? "Infériorité" : "Jeu normal", score: f + " - " + a });
+  });
+  var aw = m.played ? matchAwards(m) : { pts: null, eff: null, gk: null };
+  var award = function (r, line) { return r ? { name: r.num + " " + r.name, line: line } : null; };
+  var res = outcome(m);
+  return {
+    team: TEAM_NAME,
+    opponent: teamName(m.opponentId),
+    date: fmtDate(m.date, true),
+    home: !!m.home,
+    season: state.seasons[m.seasonId] ? state.seasons[m.seasonId].name : "",
+    played: !!m.played,
+    result: res === "w" ? "Victoire" : res === "l" ? "Défaite" : res === "n" ? "Nul" : "En cours",
+    gf: goalsFor(m), ga: goalsAgainst(m),
+    awards: [
+      award(aw.pts, aw.pts ? aw.pts.pts + " pt(s), " + aw.pts.g + " B, " + aw.pts.a + " A" : ""),
+      award(aw.eff, aw.eff ? "+/- " + (aw.eff.pm > 0 ? "+" : "") + aw.eff.pm : ""),
+      award(aw.gk, aw.gk ? aw.gk.sv + " arrêts sur " + aw.gk.sh + " tirs" : "")
+    ],
+    awardLabels: ["Meilleur pointeur", "Homme du match", "Gardien du match"],
+    tiers: PERIODS.concat(["all"]).map(function (k) { return { key: k, has: k === "all" || tierHasData(S.T[k]), m: tierMetrics(S.T[k]) }; }),
+    groups: TIER_GROUPS.map(function (g) { return { title: g.title, specs: g.specs.map(function (sp) { return { l: sp.l, k: sp.k, dir: sp.dir || 0, kind: sp.kind || "" }; }) }; }),
+    skaters: rows.filter(function (r) { return !r.isG; }).map(function (r) {
+      var c = fo[r.id] || {};
+      return { line: r.line, num: r.num, name: r.name, pos: r.pos, g: r.g, a: r.a, pm: r.pm, pim: r.pim, hj: r.hj, di: r.di, fw: r.fw, fl: r.fl, shc: r.shc, shn: r.shn, shm: r.shm, danger: r.danger, fo: c };
+    }),
+    goalies: rows.filter(function (r) { return r.isG; }).map(function (r) {
+      return { num: r.num, name: r.name, status: m.gk && m.gk[r.id] === "B" ? "Backup" : "Titulaire", sh: r.sh, svc: r.svc, svn: r.svn, svw: r.svw, ga: r.ga, adm: r.adm };
+    }),
+    goals: goals,
+    events: evs(m).map(function (e) { return { time: hhmm(e.t), per: e.per || 1, text: eventText(e), type: e.type }; }),
+    notes: [
+      "Tier : période du match (T1, T2, T3). Pondération des tirs : critique " + fmt1(SHOT_W.critical) + ", normal " + fmt1(SHOT_W.normal) + ", raté " + fmt1(SHOT_W.missed) + ".",
+      "Un but compte comme un tir critique, un but encaissé comme un tir adverse critique. Gardien : arrêt critique " + fmt1(SAVE_W.critical) + ", arrêt normal " + fmt1(SAVE_W.normal) + ".",
+      "+/- : règle officielle de la LNH, joueurs de champ uniquement. Dans le bilan par tier, vert = meilleur tier, rouge = moins bon tier."
+    ]
+  };
+}
+
+function downloadBlob(blob, name) {
+  var anchor = function () {
+    var url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 4000);
+  };
+  var ios = /iPad|iPhone/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  var file = null;
+  try { file = new File([blob], name, { type: blob.type }); } catch (e) {}
+  if (ios && file && navigator.canShare && navigator.canShare({ files: [file] })) {
+    return navigator.share({ files: [file], title: name }).catch(function (e) { if (!e || e.name !== "AbortError") anchor(); });
+  }
+  anchor();
+}
+
+function exportMatchXlsx(id) {
+  if (!window.JSZip || !window.buildMatchXlsx) { toast("Export indisponible : rechargez la page avec le réseau"); return; }
+  var data = matchExportData(id);
+  if (!data) return;
+  var name = ("Gardons_vs_" + data.opponent + "_" + (state.matches[id].date || "")).replace(/[^A-Za-z0-9_-]+/g, "_") + ".xlsx";
+  window.buildMatchXlsx(window.JSZip, data).then(function (buf) {
+    downloadBlob(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), name);
+    toast("Excel généré");
+  }).catch(function () { toast("Échec de l'export"); });
+}
+
 var actions = {
   sort: function (d) {
     var cur = ui.sort[d.view];
@@ -1867,6 +2004,7 @@ var actions = {
   "goal-save": function () {
     var sh = ui.sheet; if (!sh) return;
     ui.sheet = null;
+    if (sh.edit) { updateEvent(sh.mid, sh.edit, { pid: sh.pid, ast: sh.ast.slice(), ice: sh.ice.slice(), sit: sh.sit || "normal", per: sh.per }); return; }
     addEvent(sh.mid, sh.pid, "goal", { ast: sh.ast.slice(), ice: sh.ice.slice(), sit: sh.sit || "normal" });
   },
   "shot-open": function () { ui.sheet.step = "shot"; render(); },
@@ -1888,7 +2026,7 @@ var actions = {
   tfilter: function (d) { ui.tf[d.k] = d.v; render(); },
   livetier: function (d) { ui.liveTier = d.v; render(); },
   "pen-open": function () { ui.sheet.step = "penalty"; render(); },
-  "pen-back": function () { ui.sheet.step = "actions"; render(); },
+  "pen-back": function () { ui.sheet.step = ui.sheet.opp ? "opp" : "actions"; render(); },
   "pen-kind": function (d) { ui.sheet.pen = d.v; render(); },
   "pen-foul": function (d) { ui.sheet.foul = d.v; render(); },
   "pen-save": function () {
@@ -1896,8 +2034,27 @@ var actions = {
     var kind = PENALTIES.filter(function (n) { return n.k === (sh && sh.pen); })[0];
     if (!sh || !kind || !sh.foul) return;
     ui.sheet = null;
-    addEvent(sh.mid, sh.pid, "penalty", { min: kind.min, kind: kind.label, foul: sh.foul });
+    addEvent(sh.mid, sh.opp ? null : sh.pid, sh.opp ? "oppen" : "penalty", { min: kind.min, kind: kind.label, foul: sh.foul });
   },
+  evedit: function (d) {
+    var m = state.matches[d.m]; if (!m) return;
+    var e = evs(m).filter(function (x) { return x.id === d.e; })[0]; if (!e) return;
+    if (e.type === "goal") ui.sheet = { mid: d.m, pid: e.pid, step: "goal", ast: (e.ast || []).slice(), ice: (e.ice || []).slice(), sit: e.sit || "normal", per: e.per || 1, edit: e.id };
+    else if (e.type === "ga") ui.sheet = { mid: d.m, pid: e.pid, step: "ga", ice: (e.ice || []).slice(), sit: e.sit || "normal", per: e.per || 1, edit: e.id };
+    render();
+  },
+  "goal-scorer": function (d) {
+    var sh = ui.sheet; if (!sh || sh.pid === d.v) return;
+    var old = sh.pid;
+    sh.ast = sh.ast.filter(function (x) { return x !== d.v; });
+    sh.ice = sh.ice.filter(function (x) { return x !== d.v; });
+    if (old && state.players[old] && state.players[old].pos !== "G" && sh.ice.indexOf(old) < 0 && sh.ice.length < 4) sh.ice.push(old);
+    sh.pid = d.v; render();
+  },
+  "edit-per": function (d) { ui.sheet.per = +d.v; render(); },
+  opp: function (d) { ui.sheet = { mid: d.m, pid: null, step: "opp", opp: true, pen: "mineure", foul: null }; render(); },
+  fodetail: function (d) { ui.foDetail = ui.foDetail === d.v ? null : d.v; render(); },
+  xlsx: function (d) { exportMatchXlsx(d.m); },
   evdel: function (d) {
     var m = state.matches[d.m]; if (!m) return;
     m.events = evs(m).filter(function (e) { return e.id !== d.e; });
@@ -1925,6 +2082,7 @@ var actions = {
     var goalies = (m.lineup || []).filter(function (pid) { return state.players[pid] && state.players[pid].pos === "G"; });
     var pid = sh.pid || goalies[0] || null;
     ui.sheet = null;
+    if (sh.edit) { updateEvent(sh.mid, sh.edit, { pid: pid, ice: sh.ice.slice(), sit: sh.sit || "normal", per: sh.per }); return; }
     addEvent(sh.mid, pid, "ga", { ice: sh.ice.slice(), sit: sh.sit || "normal" });
   },
   cl: function (d) { setCompo(d.t, d.p, d.l); },
@@ -2111,7 +2269,7 @@ document.addEventListener("keydown", function (e) {
 window.addEventListener("hashchange", function () {
   if (route().name !== "reglages") ui.nm = null;
   if (route().name !== "live") ui.liveFor = null;
-  ui.edit = null; ui.confirmDel = null; ui.sheet = null; ui.rosterMsg = null;
+  ui.edit = null; ui.confirmDel = null; ui.sheet = null; ui.rosterMsg = null; ui.foDetail = null;
   render(); window.scrollTo(0, 0);
 });
 

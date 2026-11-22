@@ -226,8 +226,8 @@
   function sheetPlayers(wb, d) {
     var ws = wb.add("Joueurs");
     ws.landscape = true;
-    var heads = ["Ligne", "N°", "Joueur", "Poste", "B", "A", "Pts", "+/-", "Pun. (min)", "HJ", "DI", "MG", "MP", "MG %", "Tirs crit.", "Tirs norm.", "Tirs ratés", "Danger"];
-    ws.cols = [8, 6, 26, 8, 6, 6, 6, 7, 10, 6, 6, 7, 7, 8, 9, 9, 9, 9];
+    var heads = ["Ligne", "N°", "Joueur", "Poste", "B", "A", "Pts", "+/-", "Pun. (min)", "HJ", "DI", "MG", "MP", "MG %", "Tirs crit.", "Tirs norm.", "Tirs ratés", "Danger", "Déf."];
+    ws.cols = [8, 6, 26, 8, 6, 6, 6, 7, 10, 6, 6, 7, 7, 8, 9, 9, 9, 9, 6];
     banner(ws, heads.length, "JOUEURS DE CHAMP", d.team + " vs " + d.opponent + "  -  " + d.date);
     var hr = 5;
     heads.forEach(function (l, i) { ws.set(hr, i + 1, l, hdr(false)); });
@@ -236,7 +236,7 @@
     rows.forEach(function (p, i) {
       var r = first + i, zebra = i % 2 === 1;
       var fp = p.fw + p.fl ? p.fw / (p.fw + p.fl) : "";
-      var vals = [p.line ? "L" + p.line : "-", p.num, p.name, p.pos === "A" ? "Att." : p.pos === "D" ? "Déf." : p.pos, p.g, p.a, { f: "E" + r + "+F" + r, v: p.g + p.a }, p.pm, p.pim, p.hj, p.di, p.fw, p.fl, { f: ratioF("L", "M", r), v: fp }, p.shc, p.shn, p.shm, p.danger];
+      var vals = [p.line ? "L" + p.line : "-", p.num, p.name, p.pos === "A" ? "Att." : p.pos === "D" ? "Déf." : p.pos, p.g, p.a, { f: "E" + r + "+F" + r, v: p.g + p.a }, p.pm, p.pim, p.hj, p.di, p.fw, p.fl, { f: ratioF("L", "M", r), v: fp }, p.shc, p.shn, p.shm, p.danger, p.iv];
       vals.forEach(function (v, ci) {
         ws.set(r, ci + 1, v, body(zebra, { left: ci === 2, b: ci === 6, fmt: ci === 7 ? "+0;-0;0" : ci === 13 ? "0%" : ci === 17 ? "0.0" : undefined }));
       });
@@ -244,8 +244,8 @@
     if (rows.length) {
       var tr = last + 1;
       var sum = function (k) { return rows.reduce(function (a, p) { return a + k(p); }, 0); };
-      var res = { E: sum(function (p) { return p.g; }), F: sum(function (p) { return p.a; }), G: sum(function (p) { return p.g + p.a; }), H: sum(function (p) { return p.pm; }), I: sum(function (p) { return p.pim; }), J: sum(function (p) { return p.hj; }), K: sum(function (p) { return p.di; }), L: sum(function (p) { return p.fw; }), M: sum(function (p) { return p.fl; }), O: sum(function (p) { return p.shc; }), P: sum(function (p) { return p.shn; }), Q: sum(function (p) { return p.shm; }), R: sum(function (p) { return p.danger; }) };
-      "ABCDEFGHIJKLMNOPQR".split("").forEach(function (col, ci) {
+      var res = { E: sum(function (p) { return p.g; }), F: sum(function (p) { return p.a; }), G: sum(function (p) { return p.g + p.a; }), H: sum(function (p) { return p.pm; }), I: sum(function (p) { return p.pim; }), J: sum(function (p) { return p.hj; }), K: sum(function (p) { return p.di; }), L: sum(function (p) { return p.fw; }), M: sum(function (p) { return p.fl; }), O: sum(function (p) { return p.shc; }), P: sum(function (p) { return p.shn; }), Q: sum(function (p) { return p.shm; }), R: sum(function (p) { return p.danger; }), S: sum(function (p) { return p.iv; }) };
+      "ABCDEFGHIJKLMNOPQRS".split("").forEach(function (col, ci) {
         var st = totalCell(col === "C");
         if (col === "H") st.fmt = "+0;-0;0";
         if (col === "N") st.fmt = "0%";
@@ -259,8 +259,8 @@
       ws.height(tr, 22);
       var g = wb.styles.dxf(C.good, C.goodBg), b = wb.styles.dxf(C.bad, C.badBg);
       ws.cf.push({ ref: "H" + first + ":H" + last, rules: [{ op: "greaterThan", val: 0, dxf: g }, { op: "lessThan", val: 0, dxf: b }] });
-      ws.filter = "A" + hr + ":R" + last;
-      wb.filters.push({ sheet: ws, ref: "$A$" + hr + ":$R$" + last });
+      ws.filter = "A" + hr + ":S" + last;
+      wb.filters.push({ sheet: ws, ref: "$A$" + hr + ":$S$" + last });
     }
     ws.merge(rows.length ? last + 3 : hr + 2, 1, rows.length ? last + 3 : hr + 2, heads.length, "HJ : hors-jeu. DI : dégagement interdit. MG / MP : mises au jeu gagnées / perdues. Danger : critique x2, normal x1,5, raté x1.", { sz: 9, i: true, color: C.muted });
     ws.freeze = { x: 3, y: hr };
@@ -403,8 +403,8 @@
   function sheetSeasonPlayers(wb, d) {
     var ws = wb.add("Joueurs");
     ws.landscape = true;
-    var heads = ["N°", "Joueur", "Poste", "MJ", "B", "A", "Pts", "Pts/MJ", "+/-", "Pun. (min)", "HJ", "DI", "MG", "MP", "MG %", "Tirs crit.", "Tirs norm.", "Tirs ratés", "Danger"];
-    ws.cols = [6, 26, 8, 6, 6, 6, 6, 8, 7, 10, 6, 6, 7, 7, 8, 9, 9, 9, 9];
+    var heads = ["N°", "Joueur", "Poste", "MJ", "B", "A", "Pts", "Pts/MJ", "+/-", "Pun. (min)", "HJ", "DI", "MG", "MP", "MG %", "Tirs crit.", "Tirs norm.", "Tirs ratés", "Danger", "Déf."];
+    ws.cols = [6, 26, 8, 6, 6, 6, 6, 8, 7, 10, 6, 6, 7, 7, 8, 9, 9, 9, 9, 6];
     banner(ws, heads.length, "JOUEURS DE CHAMP", d.team + "  -  " + d.label);
     var hr = 5;
     heads.forEach(function (l, i) { ws.set(hr, i + 1, l, hdr(false)); });
@@ -412,7 +412,7 @@
     var first = hr + 1, rows = d.skaters, last = first + rows.length - 1;
     rows.forEach(function (p, i) {
       var r = first + i, zebra = i % 2 === 1;
-      var vals = [p.num, p.name, p.pos === "A" ? "Att." : p.pos === "D" ? "Déf." : p.pos, p.gp, p.g, p.a, { f: "E" + r + "+F" + r, v: p.g + p.a }, { f: "IF(D" + r + "=0,\"\",G" + r + "/D" + r + ")", v: p.gp ? (p.g + p.a) / p.gp : "" }, p.pm, p.pim, p.hj, p.di, p.fw, p.fl, { f: ratioF("M", "N", r), v: p.fw + p.fl ? p.fw / (p.fw + p.fl) : "" }, p.shc, p.shn, p.shm, p.danger];
+      var vals = [p.num, p.name, p.pos === "A" ? "Att." : p.pos === "D" ? "Déf." : p.pos, p.gp, p.g, p.a, { f: "E" + r + "+F" + r, v: p.g + p.a }, { f: "IF(D" + r + "=0,\"\",G" + r + "/D" + r + ")", v: p.gp ? (p.g + p.a) / p.gp : "" }, p.pm, p.pim, p.hj, p.di, p.fw, p.fl, { f: ratioF("M", "N", r), v: p.fw + p.fl ? p.fw / (p.fw + p.fl) : "" }, p.shc, p.shn, p.shm, p.danger, p.iv];
       vals.forEach(function (v, ci) {
         ws.set(r, ci + 1, v, body(zebra, { left: ci === 1, b: ci === 6, fmt: ci === 7 ? "0.00" : ci === 8 ? "+0;-0;0" : ci === 14 ? "0%" : ci === 18 ? "0.0" : undefined }));
       });
@@ -420,8 +420,8 @@
     if (rows.length) {
       var tr = last + 1;
       var sum = function (k) { return rows.reduce(function (a, p) { return a + k(p); }, 0); };
-      var res = { E: sum(function (p) { return p.g; }), F: sum(function (p) { return p.a; }), G: sum(function (p) { return p.g + p.a; }), I: sum(function (p) { return p.pm; }), J: sum(function (p) { return p.pim; }), K: sum(function (p) { return p.hj; }), L: sum(function (p) { return p.di; }), M: sum(function (p) { return p.fw; }), N: sum(function (p) { return p.fl; }), P: sum(function (p) { return p.shc; }), Q: sum(function (p) { return p.shn; }), R: sum(function (p) { return p.shm; }), S: sum(function (p) { return p.danger; }) };
-      "ABCDEFGHIJKLMNOPQRS".split("").forEach(function (col, ci) {
+      var res = { E: sum(function (p) { return p.g; }), F: sum(function (p) { return p.a; }), G: sum(function (p) { return p.g + p.a; }), I: sum(function (p) { return p.pm; }), J: sum(function (p) { return p.pim; }), K: sum(function (p) { return p.hj; }), L: sum(function (p) { return p.di; }), M: sum(function (p) { return p.fw; }), N: sum(function (p) { return p.fl; }), P: sum(function (p) { return p.shc; }), Q: sum(function (p) { return p.shn; }), R: sum(function (p) { return p.shm; }), S: sum(function (p) { return p.danger; }), T: sum(function (p) { return p.iv; }) };
+      "ABCDEFGHIJKLMNOPQRST".split("").forEach(function (col, ci) {
         var st = totalCell(col === "B");
         if (col === "I") st.fmt = "+0;-0;0";
         if (col === "O") st.fmt = "0%";
@@ -435,8 +435,8 @@
       ws.height(tr, 22);
       var g = wb.styles.dxf(C.good, C.goodBg), b = wb.styles.dxf(C.bad, C.badBg);
       ws.cf.push({ ref: "I" + first + ":I" + last, rules: [{ op: "greaterThan", val: 0, dxf: g }, { op: "lessThan", val: 0, dxf: b }] });
-      ws.filter = "A" + hr + ":S" + last;
-      wb.filters.push({ sheet: ws, ref: "$A$" + hr + ":$S$" + last });
+      ws.filter = "A" + hr + ":T" + last;
+      wb.filters.push({ sheet: ws, ref: "$A$" + hr + ":$T$" + last });
     } else {
       ws.merge(hr + 1, 1, hr + 1, heads.length, "Pas encore de statistiques.", { i: true, color: C.muted });
     }

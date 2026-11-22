@@ -539,7 +539,7 @@ var GOALIE_SHOTS = [{ k: "critical", label: "Arrêt critique", hint: "aurait pu 
 var SAVE_W = { critical: 2, normal: 1 };
 var SITUATIONS = [{ k: "normal", label: "Jeu normal" }, { k: "sup", label: "Supériorité" }, { k: "inf", label: "Infériorité" }];
 var PENALTIES = [{ k: "mineure", label: "Mineure", min: 2 }, { k: "double", label: "Double mineure", min: 4 }, { k: "majeure", label: "Majeure", min: 5 }, { k: "meconduite", label: "Méconduite", min: 10 }, { k: "match", label: "Match", min: 20 }];
-var EVENT_LABEL = { goal: "But", assist: "Passe", penalty: "Pénalité", offside: "Hors-jeu", int: "Intervention", icing: "Dégagement interdit", fow: "Mise au jeu gagnée", fol: "Mise au jeu perdue", oppen: "Pénalité adverse", opdi: "Dégagement interdit adverse", ophj: "Hors-jeu adverse", save: "Arrêt", ga: "But encaissé", shot: "Tir", shotag: "Tir reçu" };
+var EVENT_LABEL = { goal: "But", assist: "Passe", penalty: "Pénalité", offside: "Hors-jeu", int: "Intervention", blk: "Tir bloqué", rep: "Repli défensif", icing: "Dégagement interdit", fow: "Mise au jeu gagnée", fol: "Mise au jeu perdue", oppen: "Pénalité adverse", opdi: "Dégagement interdit adverse", ophj: "Hors-jeu adverse", save: "Arrêt", ga: "But encaissé", shot: "Tir", shotag: "Tir reçu" };
 
 function evs(m) { return Array.isArray(m.events) ? m.events : []; }
 
@@ -577,7 +577,7 @@ function playerMatchStats(m, pid, per) {
     else if (e.type === "assist") s.a++;
     else if (e.type === "penalty") { s.pim += e.min || 0; s.pen++; }
     else if (e.type === "offside") s.hj++;
-    else if (e.type === "int") s.iv++;
+    else if (e.type === "int" || e.type === "blk" || e.type === "rep") s.iv++;
     else if (e.type === "icing") s.di++;
     else if (e.type === "fow") s.fw++;
     else if (e.type === "fol") s.fl++;
@@ -1275,7 +1275,7 @@ function sheetHtml() {
   } else if (p.pos === "G") {
     body = '<div class="actions"><button class="abtn" data-act="shot-open">Arrêt / tir reçu</button>' + '<button class="abtn bad" data-act="ga" data-m="' + sh.mid + '" data-p="' + sh.pid + '">But encaissé</button>' + '<button class="abtn good" data-act="goal-open">But</button><button class="abtn" data-act="pen-open">Pénalité</button></div>';
   } else {
-    body = '<div class="actions">' + '<button class="abtn good" data-act="goal-open">But</button>' + '<button class="abtn" data-act="shot-open">Tir</button>' + evBtn("icing", "Dégagement interdit") + evBtn("offside", "Hors-jeu") + evBtn("int", "Intervention (+1 pt défensif)", "good span2") + evBtn("fow", "Mise au jeu gagnée", "good") + evBtn("fol", "Mise au jeu perdue", "bad") + '<button class="abtn bad span2" data-act="pen-open">Pénalité</button></div>';
+    body = '<div class="actions">' + '<button class="abtn good" data-act="goal-open">But</button>' + '<button class="abtn" data-act="shot-open">Tir</button>' + evBtn("icing", "Dégagement interdit") + evBtn("offside", "Hors-jeu") + evBtn("blk", "Tir bloqué (+1 déf.)", "good") + evBtn("rep", "Repli défensif (+1 déf.)", "good") + evBtn("fow", "Mise au jeu gagnée", "good") + evBtn("fol", "Mise au jeu perdue", "bad") + '<button class="abtn bad span2" data-act="pen-open">Pénalité</button></div>';
   }
   return '<div class="sheet-back" data-act="sheet-close"></div><div class="sheet' + (sh.step === "goal" || sh.step === "ga" ? " wide" : "") + '" role="dialog" aria-modal="true" aria-label="' + (sh.opp ? "Adversaires" : p ? "Actions pour " + esc(p.name) : "But encaissé") + '">' + head + body + "</div>";
 }
@@ -1430,7 +1430,7 @@ var PERIODS = ["1", "2", "3"];
 ui.liveTier = "all";
 
 function emptyTier() {
-  return { gs: 0, gf: 0, ga: 0, shc: 0, shn: 0, shm: 0, pim: 0, pen: 0, iv: 0, hj: 0, di: 0, fw: 0, fl: 0, op: 0, opm: 0, od: 0, oh: 0, ac: 0, an: 0, am: 0, svc: 0, svn: 0, sit: { normal: { f: 0, a: 0 }, sup: { f: 0, a: 0 }, inf: { f: 0, a: 0 } } };
+  return { gs: 0, gf: 0, ga: 0, shc: 0, shn: 0, shm: 0, pim: 0, pen: 0, iv: 0, bk: 0, rp: 0, hj: 0, di: 0, fw: 0, fl: 0, op: 0, opm: 0, od: 0, oh: 0, ac: 0, an: 0, am: 0, svc: 0, svn: 0, sit: { normal: { f: 0, a: 0 }, sup: { f: 0, a: 0 }, inf: { f: 0, a: 0 } } };
 }
 
 function dangerOf(c, n, mi) { return c * SHOT_W.critical + n * SHOT_W.normal + mi * SHOT_W.missed; }
@@ -1455,7 +1455,7 @@ function liveStats(m) {
     } else if (e.type === "save") each(function (t) { t.an++; t.svn++; });
     else if (e.type === "penalty") each(function (t) { t.pim += e.min || 0; t.pen++; });
     else if (e.type === "offside") each(function (t) { t.hj++; });
-    else if (e.type === "int") each(function (t) { t.iv++; });
+    else if (e.type === "int" || e.type === "blk" || e.type === "rep") each(function (t) { t.iv++; if (e.type === "blk") t.bk++; else if (e.type === "rep") t.rp++; });
     else if (e.type === "icing") each(function (t) { t.di++; });
     else if (e.type === "fow") each(function (t) { t.fw++; });
     else if (e.type === "fol") each(function (t) { t.fl++; });
@@ -1486,7 +1486,7 @@ function tierMetrics(t) {
     gf: t.gf, ga: t.ga, diff: t.gf - t.ga,
     agT: agT, ac: t.ac, an: t.an, am: t.am, agD: dangerOf(t.ac, t.an, t.am),
     svc: t.svc, svn: t.svn, svw: t.svc * SAVE_W.critical + t.svn * SAVE_W.normal, svp: sv + t.ga ? sv / (sv + t.ga) * 100 : null,
-    pen: t.pen, pim: t.pim, iv: t.iv, hj: t.hj, di: t.di, fw: t.fw, fl: t.fl, op: t.op, opm: t.opm, od: t.od, oh: t.oh, fp: t.fw + t.fl ? t.fw / (t.fw + t.fl) * 100 : null
+    pen: t.pen, pim: t.pim, iv: t.iv, bk: t.bk, rp: t.rp, hj: t.hj, di: t.di, fw: t.fw, fl: t.fl, op: t.op, opm: t.opm, od: t.od, oh: t.oh, fp: t.fw + t.fl ? t.fw / (t.fw + t.fl) * 100 : null
   };
 }
 
@@ -1529,7 +1529,7 @@ var TIER_GROUPS = [
   { title: "Attaque adverse", specs: [{ l: "Tirs adverses", k: "agT", dir: -1 }, { l: "Critiques", k: "ac", dir: -1 }, { l: "Normaux", k: "an", dir: -1 }, { l: "Ratés", k: "am" }, { l: "Danger", k: "agD", dir: -1, kind: "dec" }] },
   { title: "Score", specs: [{ l: "Buts pour", k: "gf", dir: 1 }, { l: "Buts contre", k: "ga", dir: -1 }, { l: "+/-", k: "diff", dir: 1, kind: "diff" }] },
   { title: "Gardien", specs: [{ l: "Arrêts crit.", k: "svc" }, { l: "Arrêts norm.", k: "svn" }, { l: "Arrêts pond.", k: "svw", kind: "dec" }, { l: "Buts encaissés", k: "ga", dir: -1 }, { l: "% arrêts", k: "svp", dir: 1, kind: "pct" }] },
-  { title: "Défense", specs: [{ l: "Interventions (pts déf.)", k: "iv", dir: 1 }] },
+  { title: "Défense", specs: [{ l: "Points défensifs", k: "iv", dir: 1 }, { l: "Tirs bloqués", k: "bk", dir: 1 }, { l: "Replis défensifs", k: "rp", dir: 1 }] },
   { title: "Discipline", specs: [{ l: "Pénalités", k: "pen", dir: -1 }, { l: "Minutes", k: "pim", dir: -1 }, { l: "Hors-jeu", k: "hj", dir: -1 }, { l: "Dég. interdits", k: "di", dir: -1 }] },
   { title: "Mises au jeu", specs: [{ l: "Gagnées", k: "fw", dir: 1, act: "fodetail", v: "fw" }, { l: "Perdues", k: "fl", dir: -1, act: "fodetail", v: "fl" }, { l: "% gagnées", k: "fp", dir: 1, kind: "pct" }] },
   { title: "Adversaires", specs: [{ l: "Pénalités adverses", k: "op", dir: 1 }, { l: "Minutes adverses", k: "opm", dir: 1 }, { l: "Dég. interdits adv.", k: "od", dir: 1 }, { l: "Hors-jeu adv.", k: "oh", dir: 1 }] }

@@ -614,7 +614,7 @@ function sortedMatches(arr) {
 
 function route() {
   var h = (location.hash || "").replace(/^#/, "") || "accueil";
-  var m = h.match(/^(match|equipe|feuille|live|notes)-([A-Za-z0-9_-]+)$/);
+  var m = h.match(/^(match|equipe|feuille|live|notes|joueur)-([A-Za-z0-9_-]+)$/);
   if (m) return { name: m[1], id: m[2] };
   return { name: h };
 }
@@ -678,7 +678,7 @@ function recordBar(r) {
     '<div class="stat"><b class="num">' + r.gf + "-" + r.ga + "</b><span>Buts P/C</span></div></div>";
 }
 
-var ui = { seasonSel: null, histSeason: null, statsSeason: "active", statsView: "players", statsTier: "all", sort: { players: { k: "pts", d: -1 }, goalies: { k: "pct", d: -1 }, mres: { k: "num", d: 1 } }, tf: { pos: "all", line: "all" } };
+var ui = { seasonSel: null, histSeason: null, statsSeason: "active", playerSeason: "all", statsView: "players", statsTier: "all", sort: { players: { k: "pts", d: -1 }, goalies: { k: "pct", d: -1 }, mres: { k: "num", d: 1 } }, tf: { pos: "all", line: "all" } };
 
 function seasonMatches(sid) {
   return list(state.matches).filter(function (m) { return m.seasonId === sid; });
@@ -848,7 +848,7 @@ function viewStats() {
   } else if (ui.statsView === "players") {
     var rows = sortTable(skaters.filter(function (t) { return ui.tf.pos === "all" || ui.tf.pos === "G" ? ui.tf.pos === "all" : state.players[t.id] && state.players[t.id].pos === ui.tf.pos; }), ui.sort.players);
     table = rows.length ? '<div class="card flat tablewrap"><table><thead><tr>' + th("players", "name", "Joueur") + th("players", "gp", "MJ") + th("players", "g", "B") + th("players", "a", "A") + th("players", "pts", "Pts") + th("players", "pm", "+/-") + th("players", "shc", "TC") + th("players", "shn", "TN") + th("players", "shm", "TR") + th("players", "danger", "Danger") + th("players", "pim", "Pun.") + th("players", "iv", "Déf.") + th("players", "hj", "HJ") + th("players", "di", "DI") + th("players", "fw", "MG") + th("players", "fl", "MP") + "</tr></thead><tbody>" +
-      rows.map(function (r) { return '<tr><td class="name"><a href="#stats">' + esc(r.name) + '</a></td><td>' + r.gp + "</td><td>" + r.g + "</td><td>" + r.a + '</td><td class="pts">' + r.pts + "</td><td>" + (r.pm > 0 ? "+" : "") + r.pm + "</td><td>" + r.shc + "</td><td>" + r.shn + "</td><td>" + r.shm + "</td><td>" + fmt1(r.danger) + "</td><td>" + r.pim + "</td><td>" + r.iv + "</td><td>" + r.hj + "</td><td>" + r.di + "</td><td>" + r.fw + "</td><td>" + r.fl + "</td></tr>"; }).join("") + "</tbody></table></div>"
+      rows.map(function (r) { return '<tr><td class="name"><a href="#joueur-' + r.id + '">' + esc(r.name) + '</a></td><td>' + r.gp + "</td><td>" + r.g + "</td><td>" + r.a + '</td><td class="pts">' + r.pts + "</td><td>" + (r.pm > 0 ? "+" : "") + r.pm + "</td><td>" + r.shc + "</td><td>" + r.shn + "</td><td>" + r.shm + "</td><td>" + fmt1(r.danger) + "</td><td>" + r.pim + "</td><td>" + r.iv + "</td><td>" + r.hj + "</td><td>" + r.di + "</td><td>" + r.fw + "</td><td>" + r.fl + "</td></tr>"; }).join("") + "</tbody></table></div>"
       : emptyState("Pas encore de statistiques", "Les chiffres apparaissent dès qu'un match est terminé.");
   } else {
     var gr = sortTable(goalies, ui.sort.goalies);
@@ -1774,6 +1774,43 @@ function setRoster(sid, ids) {
   write("seasons", sid, { roster: uniq }, "update");
 }
 
+function viewPlayer(id) {
+  var p = state.players[id];
+  if (!p) return '<div class="stack">' + backBar("#effectif", "Effectif") + emptyState("Joueur introuvable", "Ce joueur n'existe plus.") + "</div>";
+  var all = list(state.matches).filter(function (m) { return m.played && ((m.lineup || []).indexOf(id) >= 0 || evs(m).some(function (e) { return e.pid === id; })); });
+  var sids = {};
+  all.forEach(function (m) { sids[m.seasonId] = true; });
+  var seasons = list(state.seasons).filter(function (x) { return sids[x.id]; }).sort(function (a, b) { return a.name < b.name ? 1 : -1; });
+  var sel = ui.playerSeason !== "all" && sids[ui.playerSeason] ? ui.playerSeason : "all";
+  var ms = sortedMatches(sel === "all" ? all : all.filter(function (m) { return m.seasonId === sel; }));
+  var t = playerTotals(ms).filter(function (x) { return x.id === id; })[0];
+  var isG = p.pos === "G";
+  var select = '<div class="field"><label for="pl-season">Saison</label><select class="input" id="pl-season" data-change="playerSeason"><option value="all"' + (sel === "all" ? " selected" : "") + ">Total (toutes saisons)</option>" +
+    seasons.map(function (x) { return '<option value="' + x.id + '"' + (sel === x.id ? " selected" : "") + ">" + esc(x.name) + "</option>"; }).join("") + "</select></div>";
+  var body;
+  if (!t) body = emptyState("Pas encore de statistiques", "Les chiffres apparaissent dès qu'un match est terminé.");
+  else {
+    t.pts = t.g + t.a;
+    t.ppm = t.gp ? t.pts / t.gp : null;
+    t.danger = dangerOf(t.shc, t.shn, t.shm);
+    t.pct = t.sh ? t.sv / t.sh * 100 : null;
+    t.ga = t.sh - t.sv;
+    t.fp = t.fw + t.fl ? t.fw / (t.fw + t.fl) * 100 : null;
+    var specs = isG
+      ? [{ l: "Matchs", k: "gp" }, { l: "Victoires", k: "w" }, { l: "Tirs reçus", k: "sh" }, { l: "Arrêts", k: "sv" }, { l: "Buts encaissés", k: "ga" }, { l: "% arrêts", k: "pct", kind: "pct" }, { l: "Arrêts critiques", k: "svc" }, { l: "Arrêts normaux", k: "svn" }, { l: "Buts", k: "g" }, { l: "Passes", k: "a" }, { l: "Pun. (min)", k: "pim" }]
+      : [{ l: "Matchs", k: "gp" }, { l: "Buts", k: "g" }, { l: "Passes", k: "a" }, { l: "Points", k: "pts" }, { l: "Pts/match", k: "ppm", kind: "dec" }, { l: "+/-", k: "pm", kind: "diff" }, { l: "Pun. (min)", k: "pim" }, { l: "Pts déf.", k: "iv" }, { l: "Hors-jeu", k: "hj" }, { l: "Dég. interdits", k: "di" }, { l: "MG", k: "fw" }, { l: "MP", k: "fl" }, { l: "% MG", k: "fp", kind: "pct" }, { l: "Tirs critiques", k: "shc" }, { l: "Tirs normaux", k: "shn" }, { l: "Tirs ratés", k: "shm" }, { l: "Danger", k: "danger", kind: "dec" }];
+    body = statGrid(specs, t, null, "");
+  }
+  var games = ms.length ? "<h2>Matchs</h2>" + '<div class="card flat list">' + ms.map(function (m) {
+    var r = matchRows(m).filter(function (x) { return x.id === id; })[0];
+    var line = !r ? "" : isG ? r.sv + " arrêts / " + r.sh + " tirs" : r.g + " B, " + r.a + " A" + (r.pm ? ", " + (r.pm > 0 ? "+" : "") + r.pm : "");
+    var o = outcome(m), sn = state.seasons[m.seasonId];
+    return '<a class="item" href="#match-' + m.id + '"><div class="grow"><div class="title">' + (m.home === false ? "@ " : "vs ") + esc(teamName(m.opponentId)) + '</div><div class="small muted">' + esc((sel === "all" && sn ? sn.name + " - " : "") + fmtDate(m.date)) + "</div></div>" +
+      '<span class="small">' + esc(line) + '</span><span class="score ' + o + '">' + goalsFor(m) + " - " + goalsAgainst(m) + "</span></a>";
+  }).join("") + "</div>" : "";
+  return '<div class="stack">' + backBar("#effectif", "Effectif") + topbar(p.name, "N° " + p.num + " - " + (POS[p.pos] || "")) + (seasons.length ? select : "") + body + games + "</div>";
+}
+
 function viewRoster() {
   var seasons = list(state.seasons).sort(function (a, b) { return a.name < b.name ? 1 : -1; });
   if (!seasons.length) {
@@ -1794,7 +1831,7 @@ function viewRoster() {
     if (!rows.length) return "";
     return "<h2>" + g[1] + "</h2>" + '<div class="card flat list">' + rows.map(function (p) {
       if (admin && ui.edit === "players/" + p.id) return editRowPlayer(p);
-      return '<div class="item"><span class="jersey">' + esc(p.num) + '</span><div class="grow"><div class="title">' + esc(p.name) + "</div></div>" +
+      return '<div class="item"><span class="jersey">' + esc(p.num) + '</span><div class="grow"><a class="title" href="#joueur-' + p.id + '">' + esc(p.name) + "</a></div>" +
         (admin ? '<button class="btn ghost" data-act="edit" data-k="players/' + p.id + '">Modifier</button><button class="btn ghost danger" data-act="ro-remove" data-id="' + p.id + '">Retirer</button>' : "") + "</div>";
     }).join("") + "</div>";
   }).join("");
@@ -1859,7 +1896,7 @@ function render() {
     r = route();
   }
   var app = document.getElementById("app");
-  var current = r.name === "feuille" || r.name === "live" || r.name === "notes" ? r.name : r.name === "match" ? "saison" : r.name === "equipe" ? "historique" : r.name;
+  var current = r.name === "feuille" || r.name === "live" || r.name === "notes" ? r.name : r.name === "match" ? "saison" : r.name === "equipe" ? "historique" : r.name === "joueur" ? "effectif" : r.name;
   var html;
   if (state.failed) {
     html = emptyState("Données indisponibles", "Impossible de joindre la base de données. Vérifiez la connexion et la configuration Firebase.");
@@ -1878,6 +1915,7 @@ function render() {
   else if (r.name === "feuille") html = state.admin ? viewSheetPage(r.id) : viewMatch(r.id);
   else if (r.name === "notes") html = state.admin ? viewNotes(r.id) : viewMatch(r.id);
   else if (r.name === "equipe") html = viewTeam(r.id);
+  else if (r.name === "joueur") html = viewPlayer(r.id);
   else { html = viewHome(); current = "accueil"; }
   var y = window.scrollY;
   var oldSheet = app.querySelector(".sheet");
@@ -2495,6 +2533,7 @@ document.getElementById("app").addEventListener("change", function (e) {
   if (k === "nmSeason") { ui.nm.seasonId = t.value; return; }
   if (k === "seasonSel") { ui.seasonSel = t.value; render(); return; }
   if (k === "rosterxlsx") { importRoster(t); return; }
+  if (k === "playerSeason") { ui.playerSeason = t.value; render(); return; }
   if (k === "rosterSeason") { ui.rosterSeason = t.value; ui.rosterMsg = null; render(); return; }
   if (k === "sit") { if (ui.sheet) ui.sheet.sit = t.value; return; }
   if (k === "role") { setRole(t.dataset.t, t.dataset.p, t.value); return; }

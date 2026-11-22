@@ -176,7 +176,6 @@ td.pts { font-weight: 800; }
 
 .chip.sm { min-height: 34px; padding: 4px 12px; font-size: 0.85rem; }
 .crow { display: flex; align-items: center; justify-content: space-between; gap: 10px 14px; flex-wrap: wrap; padding: 10px 16px; }
-.plgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
 .plbtn { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); text-align: left; min-width: 0; }
 .plbtn:hover { background: var(--surface-2); }
 .plbtn .title { font-weight: 700; overflow-wrap: anywhere; }
@@ -195,6 +194,8 @@ td.pts { font-weight: 800; }
 .frow { display: flex; gap: 10px; }
 .frow > .pcard { flex: 1 1 0; min-width: 0; }
 .frow.def { justify-content: center; }
+.frow.gk { justify-content: center; flex-wrap: wrap; }
+.frow.gk > .plbtn { flex: 0 1 230px; min-width: 0; }
 .frow.def > .pcard { flex: 0 0 calc((100% - 20px) / 3); }
 .pcard { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 6px 10px; min-height: 104px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); text-align: center; }
 .pcard:hover { background: var(--surface-2); }
@@ -245,7 +246,6 @@ h3 { font-style: italic; }
 .live .board .big { font-size: 2rem; }
 .live .board .team { font-size: 1rem; }
 .live .btn { min-height: 44px; }
-.live .plgrid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
 .live .plbtn { min-height: 52px; padding: 6px 10px; }
 .facts { display: flex; gap: 2px; flex: none; }
 @media (max-width: 640px) {
@@ -1192,7 +1192,7 @@ function viewSheetPage(id) {
   LINES.forEach(function (l) {
     if (g.lines[l].length) sections += lineBlock(m, id, l, g.lines[l]);
   });
-  if (g.goalies.length) sections += '<div class="lineblock"><h2>Gardien</h2><div class="lrows"><div class="plgrid">' + g.goalies.map(function (p) { return plButton(m, id, p); }).join("") + "</div></div></div>";
+  if (g.goalies.length) sections += '<div class="lineblock"><h2>Gardien</h2><div class="lrows"><div class="frow gk">' + g.goalies.map(function (p) { return plButton(m, id, p); }).join("") + "</div></div></div>";
   if (!sections) sections = emptyState("Aucun joueur convoqué", "Composez d'abord les lignes dans la page du match.", '<a class="btn dark" href="#match-' + id + '">Composer les lignes</a>');
   var locked = liveLockId() === id;
   return '<div class="stack live">' + (locked ? "" : backBar("#match-" + id, "Fiche du match")) + boardHtml(m) +
